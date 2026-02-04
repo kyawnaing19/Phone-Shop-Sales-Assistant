@@ -18,7 +18,7 @@ from pydantic import BaseModel
 # os.environ["ALL_PROXY"] = PROXY
 
 # ရှေ့မှာ r ထည့်လိုက်ပါ
-base_path = r"C:\Users\MCC-DeLL\PycharmProjects\PhoneshopSaleAssitant\Mobile_Sales_Project"
+base_path = os.getenv("BASE_PATH")
 sqlite_path = os.path.join(base_path, "phones.db")
 chroma_path = os.path.join(base_path, "chroma_db_v3")
 

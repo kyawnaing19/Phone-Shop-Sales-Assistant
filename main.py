@@ -28,9 +28,9 @@ app.add_middleware(
 )
 
 # Paths
-BASE_PATH = r"C:\Users\MCC-DeLL\PycharmProjects\PhoneshopSaleAssitant\Mobile_Sales_Project"
-SQLITE_PATH = os.path.join(BASE_PATH, "phones.db")
-CHROMA_PATH = os.path.join(BASE_PATH, "chroma_db_v3")
+base_path = os.getenv("BASE_PATH")
+SQLITE_PATH = os.path.join(base_path, "phones.db")
+CHROMA_PATH = os.path.join(base_path, "chroma_db_v3")
 
 # Shared Embeddings
 embeddings = HuggingFaceEmbeddings(model_name="paraphrase-multilingual-MiniLM-L12-v2")
