@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile AI Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4edf5 100%);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Chatbot widget styles - FIXED POSITIONING */
+        .chatbot-widget {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 1000;
+        }
+
+        .chatbot-icon {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 10px 25px rgba(59, 130, 246, 0.4);
+            transition: all 0.3s ease;
+            border: 3px solid white;
+        }
+
+        .chatbot-icon:hover {
+            transform: scale(1.1);
+            box-shadow: 0 15px 30px rgba(59, 130, 246, 0.6);
+        }
+
+        .chat-container {
+            position: absolute;
+            bottom: 70px;  /* Changed from 80px */
+            right: 0;
+            width: 380px;
+            height: 600px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 15px 50px rgba(0, 0, 0, 0.15);
+            overflow: hidden;
+            opacity: 0;
+            visibility: hidden; /* Added for better hiding */
+            transform: translateY(20px) scale(0.9);
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-container.active {
+            opacity: 1;
+            visibility: visible; /* Added for better showing */
+            transform: translateY(0) scale(1);
+        }
+
+        .chat-header {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            color: white;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-shrink: 0; /* Prevent header from shrinking */
+        }
+
+        .chat-avatar {
+            width: 45px;
+            height: 45px;
+            background: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #3b82f6;
+            font-size: 20px;
+        }
+
+        .chat-header-info h3 {
+            font-weight: 700;
+            font-size: 18px;
+            margin-bottom: 4px;
+        }
+
+        .chat-header-info p {
+            font-size: 13px;
+            opacity: 0.9;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .chat-status {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #10b981;
+            border-radius: 50%;
+        }
+
+        .close-chat {
+            margin-left: auto;
+            background: rgba(255, 255, 255, 0.2);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .close-chat:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .chat-messages {
+            flex: 1; /* Take remaining space */
+            padding: 20px;
+            overflow-y: auto;
+            background: #f8fafc;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .message {
+            max-width: 80%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            font-size: 14px;
+            line-height: 1.5;
+            position: relative;
+            animation: messageAppear 0.3s ease;
+        }
+
+        @keyframes messageAppear {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.bot {
+            background: white;
+            border-bottom-left-radius: 5px;
+            align-self: flex-start;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            border: 1px solid #e2e8f0;
+        }
+
+        .message.user {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            color: white;
+            border-bottom-right-radius: 5px;
+            align-self: flex-end;
+            box-shadow: 0 2px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        .chat-input-container {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-shrink: 0; /* Prevent input from shrinking */
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 12px 18px;
+            border: 1px solid #e2e8f0;
+            border-radius: 30px;
+            font-size: 14px;
+            outline: none;
+            transition: border 0.2s;
+            background: #f8fafc;
+        }
+
+        .chat-input:focus {
+            border-color: #1d4ed8;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .send-button {
+            width: 46px;
+            height: 46px;
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        .send-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+        }
+
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            padding: 12px 16px;
+            background: white;
+            border-radius: 18px;
+            border-bottom-left-radius: 5px;
+            align-self: flex-start;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            border: 1px solid #e2e8f0;
+            width: 70px;
+        }
+
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            background: #94a3b8;
+            border-radius: 50%;
+            animation: typing 1.5s infinite ease-in-out;
+        }
+
+        .typing-dot:nth-child(1) { animation-delay: 0s; }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes typing {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-5px); }
+        }
+
+        /* Background preview content */
+        .preview-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        .preview-header {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        .preview-header h1 {
+            font-size: 42px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #1e293b 0%, #3b82f6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 15px;
+        }
+
+        .preview-header p {
+            font-size: 18px;
+            color: #64748b;
+            max-width: 700px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+            margin-bottom: 60px;
+        }
+
+        .feature-card {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            border: 1px solid #f1f5f9;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+
+        .feature-icon {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #e0f2fe 0%, #dbeafe 100%);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #3b82f6;
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+
+        .feature-card h3 {
+            font-size: 20px;
+            font-weight: 700;
+            color: #1e293b;
+            margin-bottom: 12px;
+        }
+
+        .feature-card p {
+            color: #64748b;
+            line-height: 1.6;
+            font-size: 15px;
+        }
+
+        .notification {
+            position: fixed;
+            bottom: 30px;
+            left: 30px;
+            background: white;
+            padding: 16px 24px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            max-width: 350px;
+            transform: translateX(-400px);
+            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border-left: 4px solid #3b82f6;
+            z-index: 999;
+        }
+
+        .notification.show {
+            transform: translateX(0);
+        }
+
+        .notification-icon {
+            width: 40px;
+            height: 40px;
+            background: #e0f2fe;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #3b82f6;
+        }
+
+        .notification-content h4 {
+            font-size: 15px;
+            font-weight: 700;
+            color: #1e293b;
+            margin-bottom: 4px;
+        }
+
+        .notification-content p {
+            font-size: 13px;
+            color: #64748b;
+        }
+
+        /* Scrollbar styling */
+        .chat-messages::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+
+        /* Mobile responsive */
+        @media (max-width: 768px) {
+            .chat-container {
+                width: calc(100vw - 40px);
+                height: 70vh;
+                right: 20px;
+                bottom: 70px; /* Adjusted for mobile */
+            }
+
+            .chatbot-widget {
+                bottom: 20px;
+                right: 20px;
+            }
+
+            .chatbot-icon {
+                width: 56px;
+                height: 56px;
+                font-size: 22px;
+            }
+
+            .preview-header h1 {
+                font-size: 32px;
+            }
+
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .notification {
+                left: 20px;
+                right: 20px;
+                max-width: none;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .chat-container {
+                width: 100vw;
+                height: 85vh;
+                right: 0;
+                bottom: 0;
+                border-radius: 20px 20px 0 0;
+                box-shadow: 0 -5px 50px rgba(0, 0, 0, 0.2);
+            }
+
+            .chatbot-icon {
+                width: 52px;
+                height: 52px;
+                font-size: 20px;
+            }
+
+            .notification {
+                bottom: 80px; /* Move notification above chat icon on mobile */
+                left: 10px;
+                right: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Preview Background Content -->
+    <div class="preview-content">
+        <div class="preview-header">
+            <h1>Myanmar Mobile Sales AI Assistant</h1>
+            <p>Get instant information about mobile phones, prices, specifications, and recommendations through our intelligent chatbot. Available 24/7 to help you make informed purchasing decisions.</p>
+        </div>
+
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fas fa-mobile-alt"></i>
+                </div>
+                <h3>Mobile Phone Database</h3>
+                <p>Access comprehensive information about thousands of mobile phone models from all major brands available in Myanmar.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fas fa-tags"></i>
+                </div>
+                <h3>Real-time Pricing</h3>
+                <p>Get up-to-date pricing information and compare prices across different retailers and online stores in Myanmar.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fas fa-chart-bar"></i>
+                </div>
+                <h3>Specification Analysis</h3>
+                <p>Detailed specifications comparison to help you choose the perfect phone based on your needs and budget.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fas fa-headset"></i>
+                </div>
+                <h3>24/7 Support</h3>
+                <p>Our AI assistant is available round the clock to answer your questions and provide personalized recommendations.</p>
+            </div>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-icon">
+                <i class="fas fa-robot"></i>
+            </div>
+            <h3>How to use the AI Assistant</h3>
+            <p>Click the blue chat icon at the bottom right corner of the screen to open the chatbot. You can ask questions about mobile phones, compare models, check specifications, get price ranges, and more. The assistant understands both English and Myanmar language queries.</p>
+        </div>
+    </div>
+
+    <!-- Notification -->
+    <div class="notification" id="notification">
+        <div class="notification-icon">
+            <i class="fas fa-info-circle"></i>
+        </div>
+        <div class="notification-content">
+            <h4>AI Assistant Available</h4>
+            <p>Click the chat icon to ask about mobile phones and prices</p>
+        </div>
+    </div>
+
+    <!-- Chatbot Widget - FIXED POSITION -->
+    <div class="chatbot-widget">
+        <div class="chat-container" id="chatContainer">
+            <div class="chat-header">
+                <div class="chat-avatar">
+                    <i class="fas fa-robot"></i>
+                </div>
+                <div class="chat-header-info">
+                    <h3>Mobile Sales AI</h3>
+                    <p><span class="chat-status"></span> Online & ready to help</p>
+                </div>
+                <div class="close-chat" id="closeChat">
+                    <i class="fas fa-times"></i>
+                </div>
+            </div>
+
+            <div class="chat-messages" id="chatMessages">
+                <div class="message bot">
+                    မင်္ဂလာပါ! ကျွန်တော်က Myanmar Mobile Sales AI ပါ။ ဖုန်းအမျိုးအစားများ၊ ဈေးနှုန်းများနှင့် အချက်အလက်များကို မေးမြန်းနိုင်ပါတယ်ဗျာ။ 🙏
+                </div>
+            </div>
+
+            <div class="chat-input-container">
+                <input type="text" class="chat-input" id="userInput"
+                    placeholder="မေးမြန်းလိုသည်များ ရိုက်ပါ..."
+                    onkeypress="if(event.key === 'Enter') sendMessage()">
+                <button class="send-button" onclick="sendMessage()">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="chatbot-icon" id="chatbotIcon">
+            <i class="fas fa-comment-dots"></i>
+        </div>
+    </div>
+
+    <script>
+        // Chat state management
+        let chatHistory = [];
+        let chatOpen = false;
+
+        // DOM elements
+        const chatbotIcon = document.getElementById('chatbotIcon');
+        const chatContainer = document.getElementById('chatContainer');
+        const closeChat = document.getElementById('closeChat');
+        const chatMessages = document.getElementById('chatMessages');
+        const userInput = document.getElementById('userInput');
+        const notification = document.getElementById('notification');
+
+        // Show notification after page load
+        setTimeout(() => {
+            notification.classList.add('show');
+
+            // Auto hide after 5 seconds
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 5000);
+        }, 1000);
+
+        // Toggle chat window
+        chatbotIcon.addEventListener('click', () => {
+            if (!chatOpen) {
+                openChat();
+            }
+        });
+
+        closeChat.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent event bubbling
+            closeChatWindow();
+        });
+
+        function openChat() {
+            chatContainer.classList.add('active');
+            chatOpen = true;
+            // Hide notification when chat opens
+            notification.classList.remove('show');
+            // Focus on input field
+            setTimeout(() => {
+                userInput.focus();
+            }, 300);
+        }
+
+        function closeChatWindow() {
+            chatContainer.classList.remove('active');
+            chatOpen = false;
+        }
+
+        // Send message function
+        async function sendMessage() {
+            const message = userInput.value.trim();
+            if (!message) return;
+
+            // Add user message to UI
+            addMessage(message, 'user');
+            userInput.value = '';
+
+            // Show typing indicator
+            const typingIndicator = document.createElement('div');
+            typingIndicator.className = 'typing-indicator';
+            typingIndicator.innerHTML = `
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+            `;
+            chatMessages.appendChild(typingIndicator);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            try {
+                // Your existing API call logic
+                const response = await fetch('http://localhost:8000/chat-stream', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: message, history: chatHistory })
+                });
+
+                // Remove typing indicator
+                chatMessages.removeChild(typingIndicator);
+
+                // Create bot message container
+                const botMessageDiv = document.createElement('div');
+                botMessageDiv.className = 'message bot';
+                chatMessages.appendChild(botMessageDiv);
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let fullReply = "";
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.substring(6));
+                                fullReply += data.text;
+                                // Format \n to <br> for better readability
+                                botMessageDiv.innerHTML = fullReply.replace(/\n/g, '<br>');
+                                chatMessages.scrollTop = chatMessages.scrollHeight;
+                            } catch (e) {
+                                console.error('Error parsing stream data:', e);
+                            }
+                        }
+                    }
+                }
+
+                // Save to chat history
+                chatHistory.push({role: "user", content: message});
+                chatHistory.push({role: "assistant", content: fullReply});
+
+            } catch (error) {
+                // Remove typing indicator on error
+                if (chatMessages.contains(typingIndicator)) {
+                    chatMessages.removeChild(typingIndicator);
+                }
+
+                // Show error message
+                addMessage('Error: Could not connect to AI assistant. Please check your connection.', 'bot');
+                console.error('Chat error:', error);
+            }
+        }
+
+        // Helper function to add message to UI
+        function addMessage(text, sender) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}`;
+            messageDiv.textContent = text;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Close chat when clicking outside (on mobile)
+        document.addEventListener('click', (e) => {
+            if (chatOpen &&
+                !chatContainer.contains(e.target) &&
+                !chatbotIcon.contains(e.target)) {
+                closeChatWindow();
+            }
+        });
+
+        // Prevent chat from closing when clicking inside it
+        chatContainer.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+
+        // Example questions for user (can be removed)
+        setTimeout(() => {
+            if (!chatOpen) {
+                const exampleQuestions = [
+                    "Samsung Galaxy S23 ဈေးဘယ်လောက်လဲ?",
+                    "iPhone နဲ့ Android ဘယ်ဟာပိုကောင်းလဲ?",
+                    "ကင်မရာကောင်းတဲ့ ဖုန်းတွေ ပြောပါ",
+                    "ဘတ်ဂျက် ၅၀၀၀၀၀ အတွင်း အကြံပြုပါ"
+                ];
+
+                // Show a random example question in notification
+                const randomQuestion = exampleQuestions[Math.floor(Math.random() * exampleQuestions.length)];
+                const notificationContent = notification.querySelector('.notification-content p');
+                notificationContent.textContent = `Try asking: "${randomQuestion}"`;
+
+                // Show notification again after some time if chat is closed
+                setTimeout(() => {
+                    if (!chatOpen) {
+                        notification.classList.add('show');
+                    }
+                }, 10000);
+            }
+        }, 8000);
+    </script>
+</body>
+</html>

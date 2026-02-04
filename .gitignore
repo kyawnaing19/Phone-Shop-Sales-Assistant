@@ -1,0 +1,13 @@
+# Python ယာယီဖိုင်များ
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.env/
+
+# API Key ပါတဲ့ ဖိုင်များ (GitHub ပေါ် မတင်စေချင်တာတွေ)
+apikey.env
+.env
+
+# Database ဖိုင်များ (လိုအပ်မှ တင်ရန်၊ များသောအားဖြင့် မတင်ကြပါ)
+*.db

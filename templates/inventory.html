@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    /* Hides scrollbar for Chrome, Safari and Opera */
+    .no-scrollbar::-webkit-scrollbar {
+        display: none;
+    }
+    /* Hides scrollbar for IE, Edge and Firefox */
+    .no-scrollbar {
+        -ms-overflow-style: none;  /* IE and Edge */
+        scrollbar-width: none;  /* Firefox */
+    }
+    input:not(:placeholder-shown) {
+    color: #1f2937; /* Example: dark text */
+}
+</style>
+
+<div class="max-w-8xl mx-auto">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+        <div>
+            <h2 class="text-2xl font-bold text-white mb-2">📱 Inventory Overview</h2>
+            <p class="text-gray-400">Total {{ items|length }} mobile models in stock</p>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+            <form action="/" method="get" class="flex gap-2 w-full">
+                <div class="relative flex-1">
+                    <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500"></i>
+                    <input name="search" type="text" placeholder="Search by brand, model, specs..."
+                           class="input-field pl-10 pr-4 py-3 rounded-lg w-full focus:outline-none">
+                </div>
+                <button type="submit" class="btn-primary px-6 py-3 rounded-lg font-medium">
+                    Search
+                </button>
+            </form>
+        </div>
+    </div>
+
+    {% if items %}
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div class="stat-card p-5 rounded-xl">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-400 mb-1">Total Models</p>
+                    <p class="text-2xl font-bold">{{ items|length }}</p>
+                </div>
+                <div class="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center">
+                    <i class="fas fa-mobile text-blue-400"></i>
+                </div>
+            </div>
+        </div>
+
+        <div class="stat-card p-5 rounded-xl">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-400 mb-1">Total Stock</p>
+                    <p class="text-2xl font-bold">
+                        {{ items|sum(attribute='quantity')|default(0)|int }}
+                    </p>
+                </div>
+                <div class="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center">
+                    <i class="fas fa-boxes text-green-400"></i>
+                </div>
+            </div>
+        </div>
+
+        <div class="stat-card p-5 rounded-xl">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-400 mb-1">Avg Price</p>
+                    <p class="text-2xl font-bold">
+                        {% set total_price = items|sum(attribute='price') %}
+                        {% if items %}
+                            {{ "{:,}".format((total_price / items|length)|int) }}
+                        {% else %}
+                            0
+                        {% endif %}
+                    </p>
+                </div>
+                <div class="w-12 h-12 bg-purple-500/10 rounded-lg flex items-center justify-center">
+                    <i class="fas fa-tags text-purple-400"></i>
+                </div>
+            </div>
+        </div>
+
+        <div class="stat-card p-5 rounded-xl">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-400 mb-1">Brands</p>
+                    <p class="text-2xl font-bold">
+                        {{ items|map(attribute='brand')|unique|list|length }}
+                    </p>
+                </div>
+                <div class="w-12 h-12 bg-yellow-500/10 rounded-lg flex items-center justify-center">
+                    <i class="fas fa-building text-yellow-400"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="card rounded-xl overflow-hidden flex flex-col">
+        <div class="overflow-x-auto overflow-y-auto no-scrollbar" style="max-height: 600px;">
+            <table class="w-full">
+                <thead class="bg-gray-800/80 sticky top-0 z-10 backdrop-blur-md">
+                    <tr>
+                        <th class="p-4 text-left text-sm font-medium text-gray-300">Brand</th>
+                        <th class="p-4 text-left text-sm font-medium text-gray-300">Model</th>
+                        <th class="p-4 text-left text-sm font-medium text-gray-300">Price (MMK)</th>
+                        <th class="p-4 text-left text-sm font-medium text-gray-300">Stock</th>
+                        <th class="p-4 text-left text-sm font-medium text-gray-300">Specifications</th>
+                        <th class="p-4 text-left text-sm font-medium text-gray-300">Best For</th>
+                        <th class="p-4 text-left text-sm font-medium text-gray-300">Status</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-800">
+                    {% for item in items %}
+                    <tr class="table-row">
+                        <td class="p-4">
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500/20 to-blue-600/20 flex items-center justify-center">
+                                    <i class="fas fa-mobile text-blue-400 text-sm"></i>
+                                </div>
+                                <span class="font-medium">{{ item.brand }}</span>
+                            </div>
+                        </td>
+                        <td class="p-4 text-white font-semibold">{{ item.model }}</td>
+                        <td class="p-4">
+                            <span class="font-bold text-green-400">{{ "{:,}".format(item.price) }}</span>
+                            <span class="text-xs text-gray-400 block">MMK</span>
+                        </td>
+                        <td class="p-4">
+                            <div class="flex items-center gap-2">
+                                <span class="font-semibold">{{ "{:,}".format(item.quantity) }}</span>
+                                <div class="w-2 h-2 rounded-full {% if item.quantity > 10 %}bg-green-500{% elif item.quantity > 0 %}bg-yellow-500{% else %}bg-red-500{% endif %}"></div>
+                            </div>
+                        </td>
+                        <td class="p-4">
+                            <div class="max-w-xs">
+                                <details class="group cursor-pointer">
+                                    <summary class="text-sm text-gray-300 truncate list-none flex items-center gap-2">
+                                        <i class="fas fa-info-circle text-blue-400 text-xs"></i>
+                                        <span class="truncate group-open:hidden">{{ item.specifications }}</span>
+                                        <span class="hidden group-open:inline font-medium text-blue-400">Close Specs</span>
+                                    </summary>
+                                    <div class="mt-2 p-3 bg-gray-950/50 border border-gray-800 rounded-lg text-xs text-gray-400 leading-relaxed whitespace-pre-wrap">
+                                        {{ item.specifications }}
+                                    </div>
+                                </details>
+                            </div>
+                        </td>
+                        <td class="p-4">
+                            <div class="max-w-[150px]">
+                                <details class="group cursor-pointer">
+                                    <summary class="list-none">
+                                        <span class="px-3 py-1 rounded-full text-[10px] font-medium bg-blue-500/20 text-blue-300 group-open:hidden block truncate">
+                                            {{ item.best_for }}
+                                        </span>
+                                        <span class="hidden group-open:inline text-xs font-medium text-blue-300 underline">Hide</span>
+                                    </summary>
+                                    <div class="mt-2 p-2 bg-blue-500/10 border border-blue-500/20 rounded-lg text-xs text-blue-200">
+                                        {{ item.best_for }}
+                                    </div>
+                                </details>
+                            </div>
+                        </td>
+                        <td class="p-2">
+                            {% if item.quantity > 10 %}
+                            <span class="py-1 rounded-full text-[10px] font-medium bg-green-500/20 text-green-300">In Stock</span>
+                            {% elif item.quantity > 0 %}
+                            <span class="py-1 rounded-full text-[10px] font-medium bg-yellow-500/20 text-yellow-300">Low Stock</span>
+                            {% else %}
+                            <span class="py-1 rounded-full text-[10px] font-medium bg-red-500/20 text-red-300">Out Stock</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="p-8 text-center text-gray-500">No products found</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if items %}
+        <div class="p-4 border-t border-gray-800 bg-gray-900/50">
+            <div class="flex justify-between items-center">
+                <span class="text-sm text-gray-400">Showing {{ items|length }} items</span>
+                <a href="/add" class="btn-primary px-6 py-2.5 rounded-lg font-medium flex items-center gap-2 text-white">
+                    <i class="fas fa-plus"></i> Add New Product
+                </a>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

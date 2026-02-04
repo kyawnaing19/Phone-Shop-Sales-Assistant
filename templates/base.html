@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/js/all.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Sidebar fixed at the left */
+        .sidebar {
+            background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+            width: 260px;
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            z-index: 40;
+        }
+        /* Main content offset to account for sidebar width */
+        .main-wrapper {
+            margin-left: 260px;
+            min-height: 100vh;
+        }
+        /* Sticky Top Navigation */
+        .top-nav {
+            position: sticky;
+            top: 0;
+            z-index: 30;
+            background: rgba(17, 24, 39, 0.8);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        /* Existing Component Styles */
+        .sidebar-link {
+            position: relative;
+            transition: all 0.2s ease;
+        }
+        .sidebar-link:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .sidebar-link.active {
+            background: rgba(59, 130, 246, 0.1);
+            color: #60a5fa;
+            border-right: 3px solid #3b82f6;
+        }
+        .sidebar-link.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            width: 3px;
+            background: linear-gradient(to bottom, #3b82f6, #60a5fa);
+        }
+        .card {
+            background: linear-gradient(145deg, #1e293b, #0f172a);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+        }
+        /* Responsive Overrides */
+        @media (max-width: 768px) {
+            .sidebar { display: none; }
+            .main-wrapper { margin-left: 0; }
+        }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+    <div class="flex">
+        <aside class="sidebar hidden md:block">
+            <div class="p-6 border-b border-gray-800">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-mobile-alt text-white text-lg"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold">Admin</h1>
+                        <p class="text-xs text-gray-400">Dashboard</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-4 space-y-1">
+                <a href="/" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg {% if request.path == '/' %}active{% endif %}">
+                    <i class="fas fa-box text-gray-400 w-5"></i>
+                    <span>Inventory</span>
+                </a>
+                <a href="/manage" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg {% if request.path == '/manage' %}active{% endif %}">
+                    <i class="fas fa-edit text-gray-400 w-5"></i>
+                    <span>Manage Products</span>
+                </a>
+                <a href="/add" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg {% if request.path == '/add' %}active{% endif %}">
+                    <i class="fas fa-plus-circle text-gray-400 w-5"></i>
+                    <span>Add New Product</span>
+                </a>
+            </div>
+
+            <div class="absolute bottom-6 left-0 right-0 px-6">
+                <div class="p-4 bg-gradient-to-r from-blue-900/30 to-blue-800/20 rounded-lg border border-blue-800/30">
+                    <p class="text-sm font-medium">Need help?</p>
+                    <p class="text-xs text-gray-400 mt-1">Contact support for assistance</p>
+                </div>
+            </div>
+        </aside>
+
+        <div class="main-wrapper flex-1 flex flex-col">
+            <nav class="top-nav px-6 py-4">
+                <div class="flex items-center justify-between">
+                    <div class="md:hidden">
+                        <button id="menuToggle" class="text-gray-400 hover:text-white">
+                            <i class="fas fa-bars text-xl"></i>
+                        </button>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="hidden md:block">
+                            <h2 class="text-lg font-semibold">Mobile Inventory Management System</h2>
+                        </div>
+                        <div class="md:hidden">
+                            <div class="flex items-center gap-2">
+                                <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-mobile-alt text-white"></i>
+                                </div>
+                                <span class="font-bold">MobileAdmin</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="hidden md:flex items-center gap-2 px-3 py-1.5 bg-gray-800 rounded-full">
+                            <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+                            <span class="text-sm">Online</span>
+                        </div>
+                        <div class="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center">
+                            <i class="fas fa-user text-gray-400"></i>
+                        </div>
+                    </div>
+                </div>
+            </nav>
+
+            <div id="mobileSidebar" class="md:hidden fixed inset-0 bg-black bg-opacity-50 z-50 hidden">
+                <div class="w-64 bg-gray-900 h-full p-6">
+                    <div class="flex justify-between items-center mb-8">
+                        <h2 class="text-xl font-bold">Menu</h2>
+                        <button id="closeMenu" class="text-gray-400 hover:text-white">
+                            <i class="fas fa-times text-xl"></i>
+                        </button>
+                    </div>
+                    <div class="space-y-2">
+                        <a href="/" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg">
+                            <i class="fas fa-box text-gray-400"></i>
+                            <span>Inventory</span>
+                        </a>
+                        <a href="/manage" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg">
+                            <i class="fas fa-edit text-gray-400"></i>
+                            <span>Manage Products</span>
+                        </a>
+                        <a href="/add" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg">
+                            <i class="fas fa-plus-circle text-gray-400"></i>
+                            <span>Add New Product</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <main class="p-4 md:p-6 flex-grow">
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+    </div>
+
+    <script>
+        // Mobile menu toggle logic remains identical
+        const menuToggle = document.getElementById('menuToggle');
+        const mobileSidebar = document.getElementById('mobileSidebar');
+        const closeMenu = document.getElementById('closeMenu');
+
+        if (menuToggle) {
+            menuToggle.addEventListener('click', () => {
+                mobileSidebar.classList.remove('hidden');
+            });
+        }
+
+        if (closeMenu) {
+            closeMenu.addEventListener('click', () => {
+                mobileSidebar.classList.add('hidden');
+            });
+        }
+    </script>
+</body>
+</html>
