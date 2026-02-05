@@ -526,6 +526,11 @@
             </div>
 
             <div class="chat-input-container">
+                <select id="modelSelect" class="bg-gray-50 border border-gray-300 text-gray-900 text-xs rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2 outline-none">
+        <option value="mistral-large" selected>Mistral Large</option>
+        <option value="llama-3">Llama 3 (70B)</option>
+        <option value="deepseek-v3">Deepseek v3</option>
+    </select>
                 <input type="text" class="chat-input" id="userInput"
                     placeholder="မေးမြန်းလိုသည်များ ရိုက်ပါ..."
                     onkeypress="if(event.key === 'Enter') sendMessage()">
@@ -541,180 +546,157 @@
     </div>
 
     <script>
-        // Chat state management
-        let chatHistory = [];
-        let chatOpen = false;
+       // Chat state management
+let chatHistory = [];
+let chatOpen = false;
 
-        // DOM elements
-        const chatbotIcon = document.getElementById('chatbotIcon');
-        const chatContainer = document.getElementById('chatContainer');
-        const closeChat = document.getElementById('closeChat');
-        const chatMessages = document.getElementById('chatMessages');
-        const userInput = document.getElementById('userInput');
-        const notification = document.getElementById('notification');
+// DOM elements
+const chatbotIcon = document.getElementById('chatbotIcon');
+const chatContainer = document.getElementById('chatContainer');
+const closeChat = document.getElementById('closeChat');
+const chatMessages = document.getElementById('chatMessages');
+const userInput = document.getElementById('userInput');
+const notification = document.getElementById('notification');
+// Select element ကို reference ယူမယ်
+const modelSelect = document.getElementById('modelSelect');
 
-        // Show notification after page load
-        setTimeout(() => {
-            notification.classList.add('show');
+// Show notification after page load
+setTimeout(() => {
+    notification.classList.add('show');
+    setTimeout(() => {
+        notification.classList.remove('show');
+    }, 5000);
+}, 1000);
 
-            // Auto hide after 5 seconds
-            setTimeout(() => {
-                notification.classList.remove('show');
-            }, 5000);
-        }, 1000);
+// Toggle chat window
+chatbotIcon.addEventListener('click', () => {
+    if (!chatOpen) openChat();
+});
 
-        // Toggle chat window
-        chatbotIcon.addEventListener('click', () => {
-            if (!chatOpen) {
-                openChat();
-            }
+closeChat.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeChatWindow();
+});
+
+function openChat() {
+    chatContainer.classList.add('active');
+    chatOpen = true;
+    notification.classList.remove('show');
+    setTimeout(() => { userInput.focus(); }, 300);
+}
+
+function closeChatWindow() {
+    chatContainer.classList.remove('active');
+    chatOpen = false;
+}
+
+// --- Modified Send Message Function ---
+async function sendMessage() {
+    const message = userInput.value.trim();
+    // Dropdown ကနေ လက်ရှိရွေးထားတဲ့ model id ကိုယူပါမယ်
+    const selectedModel = modelSelect.value;
+
+    if (!message) return;
+
+    // UI ပေါ်မှာ User စာသားပြမယ်
+    addMessage(message, 'user');
+    userInput.value = '';
+
+    // Typing indicator ပြမယ်
+    const typingIndicator = document.createElement('div');
+    typingIndicator.className = 'typing-indicator';
+    typingIndicator.innerHTML = `
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+    `;
+    chatMessages.appendChild(typingIndicator);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+
+    try {
+        // Backend API ဆီသို့ model_type ပါ ပို့ပေးခြင်း
+        const response = await fetch('http://localhost:8000/chat-stream', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                message: message,
+                history: chatHistory,
+                model_type: selectedModel // ဤနေရာတွင် model_type ပါဝင်လာပါပြီ
+            })
         });
 
-        closeChat.addEventListener('click', (e) => {
-            e.stopPropagation(); // Prevent event bubbling
-            closeChatWindow();
-        });
+        if (!response.ok) throw new Error('Network response was not ok');
 
-        function openChat() {
-            chatContainer.classList.add('active');
-            chatOpen = true;
-            // Hide notification when chat opens
-            notification.classList.remove('show');
-            // Focus on input field
-            setTimeout(() => {
-                userInput.focus();
-            }, 300);
-        }
+        // Typing indicator ဖယ်မယ်
+        chatMessages.removeChild(typingIndicator);
 
-        function closeChatWindow() {
-            chatContainer.classList.remove('active');
-            chatOpen = false;
-        }
+        // Bot အဖြေအတွက် နေရာလွတ်စဆောက်မယ်
+        const botMessageDiv = document.createElement('div');
+        botMessageDiv.className = 'message bot';
+        chatMessages.appendChild(botMessageDiv);
 
-        // Send message function
-        async function sendMessage() {
-            const message = userInput.value.trim();
-            if (!message) return;
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullReply = "";
 
-            // Add user message to UI
-            addMessage(message, 'user');
-            userInput.value = '';
+        // Stream ဖတ်ခြင်း logic
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
 
-            // Show typing indicator
-            const typingIndicator = document.createElement('div');
-            typingIndicator.className = 'typing-indicator';
-            typingIndicator.innerHTML = `
-                <div class="typing-dot"></div>
-                <div class="typing-dot"></div>
-                <div class="typing-dot"></div>
-            `;
-            chatMessages.appendChild(typingIndicator);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
 
-            try {
-                // Your existing API call logic
-                const response = await fetch('http://localhost:8000/chat-stream', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: message, history: chatHistory })
-                });
+            for (const line of lines) {
+                if (line.trim().startsWith('data: ')) {
+                    try {
+                        const jsonString = line.replace('data: ', '').trim();
+                        const data = JSON.parse(jsonString);
 
-                // Remove typing indicator
-                chatMessages.removeChild(typingIndicator);
-
-                // Create bot message container
-                const botMessageDiv = document.createElement('div');
-                botMessageDiv.className = 'message bot';
-                chatMessages.appendChild(botMessageDiv);
-
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-                let fullReply = "";
-
-                while (true) {
-                    const { value, done } = await reader.read();
-                    if (done) break;
-
-                    const chunk = decoder.decode(value);
-                    const lines = chunk.split('\n');
-
-                    for (const line of lines) {
-                        if (line.startsWith('data: ')) {
-                            try {
-                                const data = JSON.parse(line.substring(6));
-                                fullReply += data.text;
-                                // Format \n to <br> for better readability
-                                botMessageDiv.innerHTML = fullReply.replace(/\n/g, '<br>');
-                                chatMessages.scrollTop = chatMessages.scrollHeight;
-                            } catch (e) {
-                                console.error('Error parsing stream data:', e);
-                            }
-                        }
+                        fullReply += data.text;
+                        // Markdown/New line များကို <br> ပြောင်းပေးခြင်း
+                        botMessageDiv.innerHTML = fullReply.replace(/\n/g, '<br>');
+                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                    } catch (e) {
+                        console.error('Error parsing stream data:', e);
                     }
                 }
-
-                // Save to chat history
-                chatHistory.push({role: "user", content: message});
-                chatHistory.push({role: "assistant", content: fullReply});
-
-            } catch (error) {
-                // Remove typing indicator on error
-                if (chatMessages.contains(typingIndicator)) {
-                    chatMessages.removeChild(typingIndicator);
-                }
-
-                // Show error message
-                addMessage('Error: Could not connect to AI assistant. Please check your connection.', 'bot');
-                console.error('Chat error:', error);
             }
         }
 
-        // Helper function to add message to UI
-        function addMessage(text, sender) {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${sender}`;
-            messageDiv.textContent = text;
-            chatMessages.appendChild(messageDiv);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+        // History ထဲ ထည့်မယ် (LLM Context အတွက်)
+        chatHistory.push({role: "user", content: message});
+        chatHistory.push({role: "assistant", content: fullReply});
+
+        // History အရမ်းမရှည်အောင် နောက်ဆုံး ၁၀ ခုပဲ ထားချင်ရင်
+        if (chatHistory.length > 10) chatHistory = chatHistory.slice(-10);
+
+    } catch (error) {
+        if (chatMessages.contains(typingIndicator)) {
+            chatMessages.removeChild(typingIndicator);
         }
+        addMessage('အမှားတစ်ခုရှိနေပါသည်- ' + error.message, 'bot');
+        console.error('Chat error:', error);
+    }
+}
 
-        // Close chat when clicking outside (on mobile)
-        document.addEventListener('click', (e) => {
-            if (chatOpen &&
-                !chatContainer.contains(e.target) &&
-                !chatbotIcon.contains(e.target)) {
-                closeChatWindow();
-            }
-        });
+// Helper function: Message item ထည့်သွင်းခြင်း
+function addMessage(text, sender) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${sender}`;
+    messageDiv.textContent = text;
+    chatMessages.appendChild(messageDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
 
-        // Prevent chat from closing when clicking inside it
-        chatContainer.addEventListener('click', (e) => {
-            e.stopPropagation();
-        });
+// UI အပြင်ဘက်နှိပ်ရင် ပိတ်ပေးခြင်း
+document.addEventListener('click', (e) => {
+    if (chatOpen && !chatContainer.contains(e.target) && !chatbotIcon.contains(e.target)) {
+        closeChatWindow();
+    }
+});
 
-        // Example questions for user (can be removed)
-        setTimeout(() => {
-            if (!chatOpen) {
-                const exampleQuestions = [
-                    "Samsung Galaxy S23 ဈေးဘယ်လောက်လဲ?",
-                    "iPhone နဲ့ Android ဘယ်ဟာပိုကောင်းလဲ?",
-                    "ကင်မရာကောင်းတဲ့ ဖုန်းတွေ ပြောပါ",
-                    "ဘတ်ဂျက် ၅၀၀၀၀၀ အတွင်း အကြံပြုပါ"
-                ];
-
-                // Show a random example question in notification
-                const randomQuestion = exampleQuestions[Math.floor(Math.random() * exampleQuestions.length)];
-                const notificationContent = notification.querySelector('.notification-content p');
-                notificationContent.textContent = `Try asking: "${randomQuestion}"`;
-
-                // Show notification again after some time if chat is closed
-                setTimeout(() => {
-                    if (!chatOpen) {
-                        notification.classList.add('show');
-                    }
-                }, 10000);
-            }
-        }, 8000);
+chatContainer.addEventListener('click', (e) => e.stopPropagation());
     </script>
 </body>
 </html>

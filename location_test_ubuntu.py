@@ -1,10 +1,21 @@
+import os
 import requests
 
+# Proxy
+PROXY = "socks5h://10.58.39.212:1080"   # use socks5h for DNS through proxy
+
+proxies = {
+    "http": PROXY,
+    "https": PROXY
+}
 
 def get_detailed_location():
     try:
-        # ipinfo.io က မြန်မာနိုင်ငံမှာ ပိုပြီး stable ဖြစ်လေ့ရှိပါတယ်
-        response = requests.get('https://ipinfo.io/json', timeout=20)
+        response = requests.get(
+            "https://ipinfo.io/json",
+            proxies=proxies,
+            timeout=20
+        )
         data = response.json()
 
         print(f"IP: {data.get('ip')}")
@@ -15,7 +26,6 @@ def get_detailed_location():
 
     except Exception as e:
         print(f"Error: {e}")
-
 
 if __name__ == "__main__":
     get_detailed_location()

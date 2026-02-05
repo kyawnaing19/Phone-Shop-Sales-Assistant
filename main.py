@@ -2,6 +2,13 @@ import asyncio
 import json
 import os
 import sqlite3
+import uvicorn
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import Command
+from urllib import request
+
+from dotenv import load_dotenv
+
 import logic
 from fastapi.responses import StreamingResponse
 import pandas as pd
@@ -26,6 +33,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+load_dotenv()
 
 # Paths
 base_path = os.getenv("BASE_PATH")
@@ -165,17 +174,26 @@ async def add_product(brand: str = Form(...), model: str = Form(...), price: int
 
 @app.post("/chat-stream")
 async def chat_stream(req: logic.ChatRequest):
-    # logic ထဲက standalone query နဲ့ final prompt ကို တွက်ချက်ခြင်း
-    prompt_text = logic.get_final_prompt(req.message, req.history)
+    # 1. request နေရာမှာ req ကို အစားထိုးပါ
+    selected_llm = logic.models.get(req.model_type, logic.models["mistral-large"])
+
+    # 2. logic ထဲက standalone query နဲ့ final prompt ကို တွက်ချက်ခြင်း
+    # selected_llm ကိုပါ parameter အဖြစ် ပို့ပေးရပါမယ်
+    prompt_text = logic.get_final_prompt(req.message, req.history, selected_llm)
 
     async def event_generator():
-        # LLM streaming
-        for chunk in logic.llm.stream(prompt_text):
+        # 3. logic.llm အစား user ရွေးထားတဲ့ selected_llm ကို သုံးပါ
+        async for chunk in selected_llm.astream(prompt_text):  # astream သုံးတာက async အတွက် ပိုကောင်းပါတယ်
             if chunk.content:
                 yield f"data: {json.dumps({'text': chunk.content})}\n\n"
-            await asyncio.sleep(0.01)
+            # await asyncio.sleep(0.01) # inference က မြန်ရင် ဒါကို ဖြုတ်ထားလို့ရပါတယ်
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+
+
+
 
 # --- Sync Utility Route ---
 # @app.get("/sync-all-v2")

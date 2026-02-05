@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_nvidia_ai_endpoints import ChatNVIDIA
 from pydantic import BaseModel
 
 
@@ -16,6 +17,8 @@ from pydantic import BaseModel
 # os.environ["http_proxy"] = PROXY
 # os.environ["https_proxy"] = PROXY
 # os.environ["ALL_PROXY"] = PROXY
+
+load_dotenv()
 
 # ရှေ့မှာ r ထည့်လိုက်ပါ
 base_path = os.getenv("BASE_PATH")
@@ -26,16 +29,30 @@ embeddings = HuggingFaceEmbeddings(
     model_name="paraphrase-multilingual-MiniLM-L12-v2"
 )
 
-load_dotenv()
+# .env ဖိုင်မှာ NVIDIA_API_KEY ဆိုပြီး သိမ်းထားပေးပါ
+nvidia_api_key = os.getenv("NVIDIA_API_KEY")
 
-# API Key ကို OS environment ထဲကနေ ဆွဲထုတ်ပါမယ်
-google_api_key = os.getenv("GOOGLE_API_KEY")
-
-llm = ChatGoogleGenerativeAI(
-    model="gemma-3-27b-it",
-    google_api_key=google_api_key,
-    temperature=0.2,
-)
+# Model Dictionary တည်ဆောက်ပါ
+models = {
+    "mistral-large": ChatNVIDIA(
+        model="mistralai/mistral-large-3-675b-instruct-2512",
+        nvidia_api_key=nvidia_api_key,
+        temperature=0.3,
+        max_tokens=1024
+    ),
+    "llama-3": ChatNVIDIA(
+        model="meta/llama-3.1-70b-instruct",
+        nvidia_api_key=nvidia_api_key,
+        temperature=0.3,
+        max_tokens=1024
+    ),
+    "deepseek-v3": ChatNVIDIA(
+        model="deepseek-ai/deepseek-v3.1",
+        nvidia_api_key=nvidia_api_key,
+        temperature=0.3,
+        max_tokens=1024
+    )
+}
 
 vector_db = Chroma(
     persist_directory=chroma_path,
@@ -66,6 +83,7 @@ def get_all_brands_from_db():
 class ChatRequest(BaseModel):
     message: str
     history: list = []
+    model_type: str = "mistral-large"  # default ပေးထားမယ်
 
 def format_kyat_mm(price):
     lakh = price // 100000
@@ -273,7 +291,7 @@ def extract_brands(text):
 
 
 
-def get_final_prompt(message, history):
+def get_final_prompt(message, history, llm):
 
     # 1. Standalone Query Rewrite
     history_str = ""
@@ -391,7 +409,7 @@ Standalone Question:
             for brand in target_brands:
                 docs = vector_db.similarity_search(
                     search_query,
-                    k=3,
+                    k=5,
                     filter={"brand": brand},
                 )
                 docs_all.extend(docs)
