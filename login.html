@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Myanmar Mobile AI Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4edf5 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .login-container {
+            width: 100%;
+            max-width: 420px;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .login-card {
+            background: white;
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+            border: 1px solid #f1f5f9;
+            transition: transform 0.3s ease;
+        }
+
+        .login-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .logo-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .logo-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 32px;
+            margin: 0 auto 20px;
+            box-shadow: 0 10px 25px rgba(59, 130, 246, 0.3);
+        }
+
+        .logo-header h1 {
+            font-size: 28px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #1e293b 0%, #3b82f6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 8px;
+        }
+
+        .logo-header p {
+            color: #64748b;
+            font-size: 15px;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+            position: relative;
+        }
+
+        .form-label {
+            display: block;
+            color: #1e293b;
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .form-icon {
+            color: #3b82f6;
+            font-size: 16px;
+            width: 20px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 14px 18px;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 15px;
+            color: #1e293b;
+            background: #f8fafc;
+            transition: all 0.2s;
+            outline: none;
+        }
+
+        .form-input:focus {
+            border-color: #3b82f6;
+            background: white;
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+        }
+
+        .form-input.error {
+            border-color: #ef4444;
+            background: #fef2f2;
+        }
+
+        .form-input.success {
+            border-color: #10b981;
+            background: #f0fdf4;
+        }
+
+        .error-message {
+            color: #ef4444;
+            font-size: 13px;
+            margin-top: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            opacity: 0;
+            transform: translateY(-5px);
+            transition: all 0.3s ease;
+            height: 0;
+            overflow: hidden;
+        }
+
+        .error-message.show {
+            opacity: 1;
+            transform: translateY(0);
+            height: auto;
+        }
+
+        .success-message {
+            color: #10b981;
+            font-size: 13px;
+            margin-top: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            opacity: 0;
+            transform: translateY(-5px);
+            transition: all 0.3s ease;
+            height: 0;
+            overflow: hidden;
+        }
+
+        .success-message.show {
+            opacity: 1;
+            transform: translateY(0);
+            height: auto;
+        }
+
+        .submit-button {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 10px;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+        }
+
+        .submit-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
+        }
+
+        .submit-button:active {
+            transform: translateY(0);
+        }
+
+        .submit-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .register-link {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 25px;
+            border-top: 1px solid #e2e8f0;
+            color: #64748b;
+            font-size: 14px;
+        }
+
+        .register-link a {
+            color: #3b82f6;
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.2s;
+        }
+
+        .register-link a:hover {
+            color: #1d4ed8;
+            text-decoration: underline;
+        }
+
+        .password-toggle {
+            position: absolute;
+            right: 16px;
+            top: 40px;
+            background: none;
+            border: none;
+            color: #64748b;
+            cursor: pointer;
+            font-size: 18px;
+            transition: color 0.2s;
+        }
+
+        .password-toggle:hover {
+            color: #3b82f6;
+        }
+
+        /* Notification - similar to your home page */
+        .notification {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-100px);
+            background: white;
+            padding: 16px 24px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            max-width: 400px;
+            width: 90%;
+            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border-left: 4px solid #3b82f6;
+            z-index: 1000;
+        }
+
+        .notification.show {
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .notification-icon {
+            width: 40px;
+            height: 40px;
+            background: #e0f2fe;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #3b82f6;
+        }
+
+        .notification-content h4 {
+            font-size: 15px;
+            font-weight: 700;
+            color: #1e293b;
+            margin-bottom: 4px;
+        }
+
+        .notification-content p {
+            font-size: 13px;
+            color: #64748b;
+        }
+
+        /* Loading spinner */
+        .spinner {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* Mobile responsiveness */
+        @media (max-width: 640px) {
+            .login-card {
+                padding: 30px 24px;
+                border-radius: 20px;
+            }
+
+            .logo-icon {
+                width: 70px;
+                height: 70px;
+                font-size: 28px;
+            }
+
+            .logo-header h1 {
+                font-size: 24px;
+            }
+
+            body {
+                padding: 15px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .login-card {
+                padding: 25px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <!-- Logo & Header -->
+            <div class="logo-header">
+                <div class="logo-icon">
+                    <i class="fas fa-robot"></i>
+                </div>
+                <h1>Sign In</h1>
+                <p>Access your Myanmar Mobile AI Assistant account</p>
+            </div>
+
+            <!-- Login Form -->
+            <form id="loginForm">
+                <!-- Username Field -->
+                <div class="form-group">
+                    <label class="form-label">
+                        <i class="fas fa-user form-icon"></i>
+                        Username
+                    </label>
+                    <input type="text"
+                           class="form-input"
+                           id="username"
+                           placeholder="Enter your username"
+                           autocomplete="username"
+                           autofocus>
+                    <div class="error-message" id="usernameError">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <span></span>
+                    </div>
+                    <div class="success-message" id="usernameSuccess">
+                        <i class="fas fa-check-circle"></i>
+                        Username looks good
+                    </div>
+                </div>
+
+                <!-- Password Field -->
+                <div class="form-group">
+                    <label class="form-label">
+                        <i class="fas fa-lock form-icon"></i>
+                        Password
+                    </label>
+                    <input type="password"
+                           class="form-input"
+                           id="password"
+                           placeholder="Enter your password"
+                           autocomplete="current-password">
+                    <button type="button" class="password-toggle" id="togglePassword">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                    <div class="error-message" id="passwordError">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <span></span>
+                    </div>
+                    <div class="success-message" id="passwordSuccess">
+                        <i class="fas fa-check-circle"></i>
+                        Password looks good
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <button type="submit" class="submit-button" id="submitButton" disabled>
+                    <i class="fas fa-sign-in-alt"></i>
+                    Sign In
+                </button>
+            </form>
+
+            <!-- Register Link -->
+            <div class="register-link">
+                Don't have an account?
+                <a href="register.html">
+                    Create account
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification -->
+    <div class="notification" id="notification">
+        <div class="notification-icon">
+            <i class="fas fa-info-circle"></i>
+        </div>
+        <div class="notification-content">
+            <h4 id="notificationTitle"></h4>
+            <p id="notificationMessage"></p>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const form = document.getElementById('loginForm');
+        const submitButton = document.getElementById('submitButton');
+        const notification = document.getElementById('notification');
+        const notificationTitle = document.getElementById('notificationTitle');
+        const notificationMessage = document.getElementById('notificationMessage');
+
+        // Input fields
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+
+        // Track if fields have been touched/validated
+        const fieldState = {
+            username: { touched: false, valid: false },
+            password: { touched: false, valid: false }
+        };
+
+        // Toggle password visibility
+        document.getElementById('togglePassword').addEventListener('click', function() {
+            const type = passwordInput.type === 'password' ? 'text' : 'password';
+            passwordInput.type = type;
+            this.innerHTML = type === 'password' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
+        });
+
+        // Validation functions with delayed error display
+        function validateUsername() {
+            const username = usernameInput.value.trim();
+            const errorElement = document.getElementById('usernameError');
+            const successElement = document.getElementById('usernameSuccess');
+
+            // Don't validate if field hasn't been touched yet
+            if (!fieldState.username.touched && username === '') {
+                resetField(usernameInput, errorElement, successElement);
+                return false;
+            }
+
+            // Mark as touched
+            fieldState.username.touched = true;
+
+            if (username.length < 3) {
+                showError(usernameInput, errorElement, 'Username must be at least 3 characters');
+                hideElement(successElement);
+                fieldState.username.valid = false;
+                return false;
+            }
+
+            if (username.length > 20) {
+                showError(usernameInput, errorElement, 'Username cannot exceed 20 characters');
+                hideElement(successElement);
+                fieldState.username.valid = false;
+                return false;
+            }
+
+            if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+                showError(usernameInput, errorElement, 'Only letters, numbers, and underscores allowed');
+                hideElement(successElement);
+                fieldState.username.valid = false;
+                return false;
+            }
+
+            hideElement(errorElement);
+            showSuccess(usernameInput, successElement);
+            fieldState.username.valid = true;
+            return true;
+        }
+
+        function validatePassword() {
+            const password = passwordInput.value;
+            const errorElement = document.getElementById('passwordError');
+            const successElement = document.getElementById('passwordSuccess');
+
+            // Don't validate if field hasn't been touched yet
+            if (!fieldState.password.touched && password === '') {
+                resetField(passwordInput, errorElement, successElement);
+                return false;
+            }
+
+            // Mark as touched
+            fieldState.password.touched = true;
+
+            if (password.length < 6) {
+                showError(passwordInput, errorElement, 'Password must be at least 6 characters');
+                hideElement(successElement);
+                fieldState.password.valid = false;
+                return false;
+            }
+
+            hideElement(errorElement);
+            showSuccess(passwordInput, successElement);
+            fieldState.password.valid = true;
+            return true;
+        }
+
+        // UI Helper functions
+        function showError(input, errorElement, message) {
+            if (input) {
+                input.classList.remove('success');
+                input.classList.add('error');
+            }
+            if (errorElement) {
+                errorElement.querySelector('span').textContent = message;
+                errorElement.classList.add('show');
+            }
+        }
+
+        function showSuccess(input, successElement) {
+            if (input) {
+                input.classList.remove('error');
+                input.classList.add('success');
+            }
+            if (successElement) {
+                successElement.classList.add('show');
+            }
+        }
+
+        function hideElement(element) {
+            if (element) {
+                element.classList.remove('show');
+            }
+        }
+
+        function resetField(input, errorElement, successElement) {
+            if (input) {
+                input.classList.remove('error', 'success');
+            }
+            hideElement(errorElement);
+            hideElement(successElement);
+        }
+
+        function showNotification(title, message, type = 'info') {
+            notificationTitle.textContent = title;
+            notificationMessage.textContent = message;
+
+            // Change color based on type
+            const notificationIcon = notification.querySelector('.notification-icon');
+            if (type === 'success') {
+                notification.style.borderLeftColor = '#10b981';
+                notificationIcon.innerHTML = '<i class="fas fa-check-circle"></i>';
+            } else if (type === 'error') {
+                notification.style.borderLeftColor = '#ef4444';
+                notificationIcon.innerHTML = '<i class="fas fa-exclamation-circle"></i>';
+            } else {
+                notification.style.borderLeftColor = '#3b82f6';
+                notificationIcon.innerHTML = '<i class="fas fa-info-circle"></i>';
+            }
+
+            notification.classList.add('show');
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 5000);
+        }
+
+        function updateSubmitButton() {
+            // Enable submit button if all fields are valid
+            if (fieldState.username.valid && fieldState.password.valid) {
+                submitButton.disabled = false;
+            } else {
+                submitButton.disabled = true;
+            }
+        }
+
+        // Event Listeners with delayed validation
+        usernameInput.addEventListener('blur', () => {
+            fieldState.username.touched = true;
+            validateUsername();
+            updateSubmitButton();
+        });
+
+        usernameInput.addEventListener('input', () => {
+            if (fieldState.username.touched) {
+                validateUsername();
+                updateSubmitButton();
+            }
+        });
+
+        passwordInput.addEventListener('blur', () => {
+            fieldState.password.touched = true;
+            validatePassword();
+            updateSubmitButton();
+        });
+
+        passwordInput.addEventListener('input', () => {
+            if (fieldState.password.touched) {
+                validatePassword();
+                updateSubmitButton();
+            }
+        });
+
+        // Enter key support
+        form.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !submitButton.disabled) {
+                form.dispatchEvent(new Event('submit'));
+            }
+        });
+
+        // Form submission
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            // Force validation of all fields before submission
+            fieldState.username.touched = true;
+            fieldState.password.touched = true;
+
+            const isUsernameValid = validateUsername();
+            const isPasswordValid = validatePassword();
+
+            if (!isUsernameValid || !isPasswordValid) {
+                showNotification('Validation Error', 'Please fill all fields correctly', 'error');
+                return;
+            }
+
+            // Disable button and show loading state
+            submitButton.disabled = true;
+            submitButton.innerHTML = '<i class="fas fa-spinner spinner"></i> Signing In...';
+
+            // Get form data
+            const formData = {
+                username: usernameInput.value.trim(),
+                password: passwordInput.value
+            };
+
+            // Show immediate feedback for better UX
+            showNotification('Authenticating', 'Verifying your credentials...', 'info');
+
+            // Simulate API call (2 seconds delay)
+            setTimeout(() => {
+                // Mock authentication - In real app, this would be an API call
+                const mockUsers = [
+                    { username: 'john', password: 'password123' },
+                    { username: 'jane', password: 'password123' },
+                    { username: 'admin', password: 'admin123' }
+                ];
+
+                const user = mockUsers.find(u => u.username === formData.username);
+
+                if (user && user.password === formData.password) {
+                    // Success
+                    showNotification('Login Successful', 'Welcome to Myanmar Mobile AI Assistant!', 'success');
+
+                    // Store session data (in real app, this would be a token)
+                    sessionStorage.setItem('isLoggedIn', 'true');
+                    sessionStorage.setItem('username', formData.username);
+
+                    // Change button to success state
+                    submitButton.innerHTML = '<i class="fas fa-check-circle"></i> Success! Redirecting...';
+
+                    // Redirect to dashboard/home page after delay
+                    setTimeout(() => {
+                        window.location.href = 'index.html'; // Redirect to homepage
+                    }, 1500);
+
+                } else {
+                    // Authentication failed
+                    showNotification('Login Failed', 'Invalid username or password', 'error');
+
+                    // Reset button state
+                    submitButton.disabled = false;
+                    submitButton.innerHTML = '<i class="fas fa-sign-in-alt"></i> Sign In';
+
+                    // Show specific error on password field
+                    passwordInput.classList.add('error');
+                    const passwordError = document.getElementById('passwordError');
+                    passwordError.querySelector('span').textContent = 'Invalid credentials';
+                    passwordError.classList.add('show');
+
+                    // Clear password field for retry
+                    passwordInput.value = '';
+                    fieldState.password.valid = false;
+                    updateSubmitButton();
+
+                    // Focus password field for retry
+                    passwordInput.focus();
+                }
+
+            }, 2000);
+        });
+
+        // Demo credentials helper (optional - remove in production)
+        function showDemoCredentials() {
+            showNotification('Demo Credentials', 'Try: john / password123', 'info');
+        }
+
+        // Add demo credentials hint after 5 seconds
+        setTimeout(() => {
+            // Add subtle hint in console
+            console.log('Demo credentials available: john/password123, jane/password123, admin/admin123');
+        }, 5000);
+
+        // Auto-focus username field on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            usernameInput.focus();
+
+            // Check if user is already logged in (optional redirect)
+            if (sessionStorage.getItem('isLoggedIn') === 'true') {
+                showNotification('Already Logged In', 'Redirecting to dashboard...', 'info');
+                setTimeout(() => {
+                    window.location.href = 'index.html';
+                }, 1000);
+            }
+        });
+
+        // Initial state - no validation shown
+        updateSubmitButton();
+    </script>
+</body>
+</html>

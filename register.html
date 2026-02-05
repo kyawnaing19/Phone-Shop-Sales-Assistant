@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register - Myanmar Mobile AI Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4edf5 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .register-container {
+            width: 100%;
+            max-width: 500px;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .register-card {
+            background: white;
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+            border: 1px solid #f1f5f9;
+            transition: transform 0.3s ease;
+        }
+
+        .register-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .logo-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 32px;
+            margin: 0 auto 20px;
+            box-shadow: 0 10px 25px rgba(59, 130, 246, 0.3);
+        }
+
+        .logo-header h1 {
+            font-size: 28px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #1e293b 0%, #3b82f6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 8px;
+        }
+
+        .logo-header p {
+            color: #64748b;
+            font-size: 15px;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+            position: relative;
+        }
+
+        .form-label {
+            display: block;
+            color: #1e293b;
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .form-icon {
+            color: #3b82f6;
+            font-size: 16px;
+            width: 20px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 14px 18px;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 15px;
+            color: #1e293b;
+            background: #f8fafc;
+            transition: all 0.2s;
+            outline: none;
+        }
+
+        .form-input:focus {
+            border-color: #3b82f6;
+            background: white;
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+        }
+
+        .form-input.error {
+            border-color: #ef4444;
+            background: #fef2f2;
+        }
+
+        .form-input.success {
+            border-color: #10b981;
+            background: #f0fdf4;
+        }
+
+        .gender-group {
+            display: flex;
+            gap: 16px;
+            margin-top: 8px;
+        }
+
+        .gender-option {
+            flex: 1;
+        }
+
+        .gender-option input {
+            display: none;
+        }
+
+        .gender-label {
+            display: block;
+            padding: 14px;
+            text-align: center;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+            color: #64748b;
+            background: #f8fafc;
+        }
+
+        .gender-option input:checked + .gender-label {
+            border-color: #3b82f6;
+            background: #eff6ff;
+            color: #1d4ed8;
+            font-weight: 600;
+        }
+
+        .error-message {
+            color: #ef4444;
+            font-size: 13px;
+            margin-top: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            opacity: 0;
+            transform: translateY(-5px);
+            transition: all 0.3s ease;
+            height: 0;
+            overflow: hidden;
+        }
+
+        .error-message.show {
+            opacity: 1;
+            transform: translateY(0);
+            height: auto;
+        }
+
+        .success-message {
+            color: #10b981;
+            font-size: 13px;
+            margin-top: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            opacity: 0;
+            transform: translateY(-5px);
+            transition: all 0.3s ease;
+            height: 0;
+            overflow: hidden;
+        }
+
+        .success-message.show {
+            opacity: 1;
+            transform: translateY(0);
+            height: auto;
+        }
+
+        .submit-button {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 10px;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+        }
+
+        .submit-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
+        }
+
+        .submit-button:active {
+            transform: translateY(0);
+        }
+
+        .submit-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .login-link {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 25px;
+            border-top: 1px solid #e2e8f0;
+            color: #64748b;
+            font-size: 14px;
+        }
+
+        .login-link a {
+            color: #3b82f6;
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.2s;
+        }
+
+        .login-link a:hover {
+            color: #1d4ed8;
+            text-decoration: underline;
+        }
+
+        .password-toggle {
+            position: absolute;
+            right: 16px;
+            top: 40px;
+            background: none;
+            border: none;
+            color: #64748b;
+            cursor: pointer;
+            font-size: 18px;
+            transition: color 0.2s;
+        }
+
+        .password-toggle:hover {
+            color: #3b82f6;
+        }
+
+        /* Notification - similar to your home page */
+        .notification {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-100px);
+            background: white;
+            padding: 16px 24px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            max-width: 400px;
+            width: 90%;
+            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border-left: 4px solid #3b82f6;
+            z-index: 1000;
+        }
+
+        .notification.show {
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .notification-icon {
+            width: 40px;
+            height: 40px;
+            background: #e0f2fe;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #3b82f6;
+        }
+
+        .notification-content h4 {
+            font-size: 15px;
+            font-weight: 700;
+            color: #1e293b;
+            margin-bottom: 4px;
+        }
+
+        .notification-content p {
+            font-size: 13px;
+            color: #64748b;
+        }
+
+        /* Progress indicator */
+        .progress-bar {
+            height: 4px;
+            background: #e2e8f0;
+            border-radius: 2px;
+            margin-bottom: 30px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6 0%, #1d4ed8 100%);
+            width: 0%;
+            transition: width 0.5s ease;
+        }
+
+        /* Mobile responsiveness */
+        @media (max-width: 640px) {
+            .register-card {
+                padding: 30px 24px;
+                border-radius: 20px;
+            }
+
+            .logo-icon {
+                width: 70px;
+                height: 70px;
+                font-size: 28px;
+            }
+
+            .logo-header h1 {
+                font-size: 24px;
+            }
+
+            .gender-group {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            body {
+                padding: 15px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .register-card {
+                padding: 25px 20px;
+            }
+        }
+
+        /* Password strength indicator */
+        .password-strength {
+            height: 4px;
+            background: #e2e8f0;
+            border-radius: 2px;
+            margin-top: 8px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .strength-meter {
+            height: 100%;
+            width: 0%;
+            border-radius: 2px;
+            transition: all 0.3s ease;
+        }
+
+        .strength-text {
+            position: absolute;
+            right: 0;
+            top: -20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="register-container">
+        <div class="register-card">
+            <!-- Progress Bar -->
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+
+            <!-- Logo & Header -->
+            <div class="logo-header">
+                <div class="logo-icon">
+                    <i class="fas fa-robot"></i>
+                </div>
+                <h1>Create Account</h1>
+                <p>Register for Myanmar Mobile AI Assistant</p>
+            </div>
+
+            <!-- Registration Form -->
+            <form id="registerForm">
+                <!-- Username Field -->
+                <div class="form-group">
+                    <label class="form-label">
+                        <i class="fas fa-user form-icon"></i>
+                        Username
+                    </label>
+                    <input type="text"
+                           class="form-input"
+                           id="username"
+                           placeholder="Enter your username"
+                           autocomplete="username">
+                    <div class="error-message" id="usernameError">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <span></span>
+                    </div>
+                    <div class="success-message" id="usernameSuccess">
+                        <i class="fas fa-check-circle"></i>
+                        Username is available
+                    </div>
+                </div>
+
+                <!-- Password Field -->
+                <div class="form-group">
+                    <label class="form-label">
+                        <i class="fas fa-lock form-icon"></i>
+                        Password
+                    </label>
+                    <input type="password"
+                           class="form-input"
+                           id="password"
+                           placeholder="Create a strong password"
+                           autocomplete="new-password">
+                    <button type="button" class="password-toggle" id="togglePassword">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                    <div class="error-message" id="passwordError">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <span></span>
+                    </div>
+                    <div class="success-message" id="passwordSuccess">
+                        <i class="fas fa-check-circle"></i>
+                        Strong password
+                    </div>
+                </div>
+
+                <!-- Confirm Password Field -->
+                <div class="form-group">
+                    <label class="form-label">
+                        <i class="fas fa-lock form-icon"></i>
+                        Confirm Password
+                    </label>
+                    <input type="password"
+                           class="form-input"
+                           id="confirmPassword"
+                           placeholder="Re-enter your password"
+                           autocomplete="new-password">
+                    <button type="button" class="password-toggle" id="toggleConfirmPassword">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                    <div class="error-message" id="confirmPasswordError">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <span></span>
+                    </div>
+                    <div class="success-message" id="confirmPasswordSuccess">
+                        <i class="fas fa-check-circle"></i>
+                        Passwords match
+                    </div>
+                </div>
+
+                <!-- Age Field -->
+                <div class="form-group">
+                    <label class="form-label">
+                        <i class="fas fa-birthday-cake form-icon"></i>
+                        Age
+                    </label>
+                    <input type="number"
+                           class="form-input"
+                           id="age"
+                           placeholder="Enter your age"
+                           min="13"
+                           max="120">
+                    <div class="error-message" id="ageError">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <span></span>
+                    </div>
+                    <div class="success-message" id="ageSuccess">
+                        <i class="fas fa-check-circle"></i>
+                        Age verified
+                    </div>
+                </div>
+
+                <!-- Gender Field -->
+                <div class="form-group">
+                    <label class="form-label">
+                        <i class="fas fa-venus-mars form-icon"></i>
+                        Gender
+                    </label>
+                    <div class="gender-group">
+                        <div class="gender-option">
+                            <input type="radio" name="gender" id="male" value="male">
+                            <label class="gender-label" for="male">
+                                <i class="fas fa-mars"></i> Male
+                            </label>
+                        </div>
+                        <div class="gender-option">
+                            <input type="radio" name="gender" id="female" value="female">
+                            <label class="gender-label" for="female">
+                                <i class="fas fa-venus"></i> Female
+                            </label>
+                        </div>
+                    </div>
+                    <div class="error-message" id="genderError">
+                        <i class="fas fa-exclamation-circle"></i>
+                        Please select your gender
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <button type="submit" class="submit-button" id="submitButton" disabled>
+                    <i class="fas fa-user-plus"></i>
+                    Create Account
+                </button>
+            </form>
+
+            <!-- Login Link -->
+            <div class="login-link">
+                Already have an account?
+                <a href="#" onclick="alert('Login page would open here'); return false;">
+                    Sign in here
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification -->
+    <div class="notification" id="notification">
+        <div class="notification-icon">
+            <i class="fas fa-info-circle"></i>
+        </div>
+        <div class="notification-content">
+            <h4 id="notificationTitle"></h4>
+            <p id="notificationMessage"></p>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const form = document.getElementById('registerForm');
+        const submitButton = document.getElementById('submitButton');
+        const notification = document.getElementById('notification');
+        const notificationTitle = document.getElementById('notificationTitle');
+        const notificationMessage = document.getElementById('notificationMessage');
+        const progressFill = document.getElementById('progressFill');
+
+        // Input fields
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const confirmPasswordInput = document.getElementById('confirmPassword');
+        const ageInput = document.getElementById('age');
+        const genderInputs = document.querySelectorAll('input[name="gender"]');
+
+        // Track if fields have been touched/validated
+        const fieldState = {
+            username: { touched: false, valid: false },
+            password: { touched: false, valid: false },
+            confirmPassword: { touched: false, valid: false },
+            age: { touched: false, valid: false },
+            gender: { touched: false, valid: false }
+        };
+
+        // Toggle password visibility
+        document.getElementById('togglePassword').addEventListener('click', function() {
+            const type = passwordInput.type === 'password' ? 'text' : 'password';
+            passwordInput.type = type;
+            this.innerHTML = type === 'password' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
+        });
+
+        document.getElementById('toggleConfirmPassword').addEventListener('click', function() {
+            const type = confirmPasswordInput.type === 'password' ? 'text' : 'password';
+            confirmPasswordInput.type = type;
+            this.innerHTML = type === 'password' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
+        });
+
+        // Validation functions with delayed error display
+        function validateUsername() {
+            const username = usernameInput.value.trim();
+            const errorElement = document.getElementById('usernameError');
+            const successElement = document.getElementById('usernameSuccess');
+
+            // Don't validate if field hasn't been touched yet
+            if (!fieldState.username.touched && username === '') {
+                resetField(usernameInput, errorElement, successElement);
+                return false;
+            }
+
+            // Mark as touched
+            fieldState.username.touched = true;
+
+            if (username.length < 3) {
+                showError(usernameInput, errorElement, 'Username must be at least 3 characters');
+                hideElement(successElement);
+                fieldState.username.valid = false;
+                return false;
+            }
+
+            if (username.length > 20) {
+                showError(usernameInput, errorElement, 'Username cannot exceed 20 characters');
+                hideElement(successElement);
+                fieldState.username.valid = false;
+                return false;
+            }
+
+            if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+                showError(usernameInput, errorElement, 'Only letters, numbers, and underscores allowed');
+                hideElement(successElement);
+                fieldState.username.valid = false;
+                return false;
+            }
+
+            hideElement(errorElement);
+            showSuccess(usernameInput, successElement);
+            fieldState.username.valid = true;
+            return true;
+        }
+
+        function validatePassword() {
+            const password = passwordInput.value;
+            const errorElement = document.getElementById('passwordError');
+            const successElement = document.getElementById('passwordSuccess');
+
+            // Don't validate if field hasn't been touched yet
+            if (!fieldState.password.touched && password === '') {
+                resetField(passwordInput, errorElement, successElement);
+                return false;
+            }
+
+            // Mark as touched
+            fieldState.password.touched = true;
+
+            if (password.length < 8) {
+                showError(passwordInput, errorElement, 'Password must be at least 8 characters');
+                hideElement(successElement);
+                fieldState.password.valid = false;
+                return false;
+            }
+
+            if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
+                showError(passwordInput, errorElement, 'Must contain uppercase, lowercase, and numbers');
+                hideElement(successElement);
+                fieldState.password.valid = false;
+                return false;
+            }
+
+            hideElement(errorElement);
+            showSuccess(passwordInput, successElement);
+            fieldState.password.valid = true;
+            return true;
+        }
+
+        function validateConfirmPassword() {
+            const password = passwordInput.value;
+            const confirmPassword = confirmPasswordInput.value;
+            const errorElement = document.getElementById('confirmPasswordError');
+            const successElement = document.getElementById('confirmPasswordSuccess');
+
+            // Don't validate if field hasn't been touched yet
+            if (!fieldState.confirmPassword.touched && confirmPassword === '') {
+                resetField(confirmPasswordInput, errorElement, successElement);
+                return false;
+            }
+
+            // Mark as touched
+            fieldState.confirmPassword.touched = true;
+
+            if (password !== confirmPassword) {
+                showError(confirmPasswordInput, errorElement, 'Passwords do not match');
+                hideElement(successElement);
+                fieldState.confirmPassword.valid = false;
+                return false;
+            }
+
+            hideElement(errorElement);
+            showSuccess(confirmPasswordInput, successElement);
+            fieldState.confirmPassword.valid = true;
+            return true;
+        }
+
+        function validateAge() {
+            const age = parseInt(ageInput.value);
+            const errorElement = document.getElementById('ageError');
+            const successElement = document.getElementById('ageSuccess');
+
+            // Don't validate if field hasn't been touched yet
+            if (!fieldState.age.touched && ageInput.value === '') {
+                resetField(ageInput, errorElement, successElement);
+                return false;
+            }
+
+            // Mark as touched
+            fieldState.age.touched = true;
+
+            if (isNaN(age) || age < 13) {
+                showError(ageInput, errorElement, 'You must be at least 13 years old');
+                hideElement(successElement);
+                fieldState.age.valid = false;
+                return false;
+            }
+
+            if (age > 120) {
+                showError(ageInput, errorElement, 'Please enter a valid age');
+                hideElement(successElement);
+                fieldState.age.valid = false;
+                return false;
+            }
+
+            hideElement(errorElement);
+            showSuccess(ageInput, successElement);
+            fieldState.age.valid = true;
+            return true;
+        }
+
+        function validateGender() {
+            const errorElement = document.getElementById('genderError');
+            let genderSelected = false;
+
+            // Don't validate if field hasn't been touched yet
+            if (!fieldState.gender.touched) {
+                hideElement(errorElement);
+                fieldState.gender.valid = false;
+                return false;
+            }
+
+            // Mark as touched (this happens on change)
+            fieldState.gender.touched = true;
+
+            genderInputs.forEach(input => {
+                if (input.checked) {
+                    genderSelected = true;
+                }
+            });
+
+            if (!genderSelected) {
+                showError(null, errorElement, '');
+                fieldState.gender.valid = false;
+                return false;
+            }
+
+            hideElement(errorElement);
+            fieldState.gender.valid = true;
+            return true;
+        }
+
+        // UI Helper functions
+        function showError(input, errorElement, message) {
+            if (input) {
+                input.classList.remove('success');
+                input.classList.add('error');
+            }
+            if (errorElement) {
+                errorElement.querySelector('span').textContent = message;
+                errorElement.classList.add('show');
+            }
+        }
+
+        function showSuccess(input, successElement) {
+            if (input) {
+                input.classList.remove('error');
+                input.classList.add('success');
+            }
+            if (successElement) {
+                successElement.classList.add('show');
+            }
+        }
+
+        function hideElement(element) {
+            if (element) {
+                element.classList.remove('show');
+            }
+        }
+
+        function resetField(input, errorElement, successElement) {
+            if (input) {
+                input.classList.remove('error', 'success');
+            }
+            hideElement(errorElement);
+            hideElement(successElement);
+        }
+
+        function showNotification(title, message, type = 'info') {
+            notificationTitle.textContent = title;
+            notificationMessage.textContent = message;
+
+            // Change color based on type
+            const notificationIcon = notification.querySelector('.notification-icon');
+            if (type === 'success') {
+                notification.style.borderLeftColor = '#10b981';
+                notificationIcon.innerHTML = '<i class="fas fa-check-circle"></i>';
+            } else if (type === 'error') {
+                notification.style.borderLeftColor = '#ef4444';
+                notificationIcon.innerHTML = '<i class="fas fa-exclamation-circle"></i>';
+            } else {
+                notification.style.borderLeftColor = '#3b82f6';
+                notificationIcon.innerHTML = '<i class="fas fa-info-circle"></i>';
+            }
+
+            notification.classList.add('show');
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 5000);
+        }
+
+        function updateProgress() {
+            const validCount = Object.values(fieldState).filter(field => field.valid).length;
+            const totalFields = Object.keys(fieldState).length;
+            const progressPercentage = (validCount / totalFields) * 100;
+
+            progressFill.style.width = `${progressPercentage}%`;
+
+            // Enable submit button if all fields are valid
+            if (validCount === totalFields) {
+                submitButton.disabled = false;
+            } else {
+                submitButton.disabled = true;
+            }
+        }
+
+        // Event Listeners with delayed validation
+        usernameInput.addEventListener('blur', () => {
+            fieldState.username.touched = true;
+            validateUsername();
+            updateProgress();
+        });
+
+        usernameInput.addEventListener('input', () => {
+            if (fieldState.username.touched) {
+                validateUsername();
+                updateProgress();
+            }
+        });
+
+        passwordInput.addEventListener('blur', () => {
+            fieldState.password.touched = true;
+            validatePassword();
+            if (fieldState.confirmPassword.touched) {
+                validateConfirmPassword();
+            }
+            updateProgress();
+        });
+
+        passwordInput.addEventListener('input', () => {
+            if (fieldState.password.touched) {
+                validatePassword();
+                if (fieldState.confirmPassword.touched) {
+                    validateConfirmPassword();
+                }
+                updateProgress();
+            }
+        });
+
+        confirmPasswordInput.addEventListener('blur', () => {
+            fieldState.confirmPassword.touched = true;
+            validateConfirmPassword();
+            updateProgress();
+        });
+
+        confirmPasswordInput.addEventListener('input', () => {
+            if (fieldState.confirmPassword.touched) {
+                validateConfirmPassword();
+                updateProgress();
+            }
+        });
+
+        ageInput.addEventListener('blur', () => {
+            fieldState.age.touched = true;
+            validateAge();
+            updateProgress();
+        });
+
+        ageInput.addEventListener('input', () => {
+            if (fieldState.age.touched) {
+                validateAge();
+                updateProgress();
+            }
+        });
+
+        genderInputs.forEach(input => {
+            input.addEventListener('change', () => {
+                fieldState.gender.touched = true;
+                validateGender();
+                updateProgress();
+            });
+        });
+
+        // Form submission
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            // Force validation of all fields before submission
+            fieldState.username.touched = true;
+            fieldState.password.touched = true;
+            fieldState.confirmPassword.touched = true;
+            fieldState.age.touched = true;
+            fieldState.gender.touched = true;
+
+            const isUsernameValid = validateUsername();
+            const isPasswordValid = validatePassword();
+            const isConfirmPasswordValid = validateConfirmPassword();
+            const isAgeValid = validateAge();
+            const isGenderValid = validateGender();
+
+            if (!isUsernameValid || !isPasswordValid || !isConfirmPasswordValid || !isAgeValid || !isGenderValid) {
+                showNotification('Validation Error', 'Please fill all fields correctly', 'error');
+                return;
+            }
+
+            // Disable button and show loading state
+            submitButton.disabled = true;
+            submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating Account...';
+
+            // Simulate API call
+            setTimeout(() => {
+                // In a real application, you would send data to your backend here
+                const formData = {
+                    username: usernameInput.value.trim(),
+                    password: passwordInput.value,
+                    age: parseInt(ageInput.value),
+                    gender: Array.from(genderInputs).find(input => input.checked).value
+                };
+
+                console.log('Registration data:', formData);
+
+                // Show success message
+                showNotification('Account Created', 'Your account has been created successfully', 'success');
+
+                // Reset form after successful registration
+                setTimeout(() => {
+                    form.reset();
+                    submitButton.innerHTML = '<i class="fas fa-user-plus"></i> Create Account';
+                    submitButton.disabled = true;
+                    progressFill.style.width = '0%';
+
+                    // Reset all field states
+                    Object.keys(fieldState).forEach(key => {
+                        fieldState[key] = { touched: false, valid: false };
+                    });
+
+                    // Clear validation states
+                    document.querySelectorAll('.form-input').forEach(input => {
+                        input.classList.remove('success', 'error');
+                    });
+                    document.querySelectorAll('.error-message, .success-message').forEach(el => {
+                        el.classList.remove('show');
+                    });
+
+                    // Redirect to login or home page
+                    setTimeout(() => {
+                        alert('Registration successful! You will be redirected to the login page.');
+                        // In a real app: window.location.href = '/login';
+                    }, 1000);
+
+                }, 1000);
+
+            }, 2000);
+        });
+
+        // Initial state - no validation shown
+        updateProgress();
+    </script>
+</body>
+</html>
