@@ -80,7 +80,7 @@ class Config:
 
     # Performance settings
     CACHE_SIZE = 500
-    FUZZY_MATCH_THRESHOLD = 80
+    FUZZY_MATCH_THRESHOLD = 90
     CONTEXT_REUSE_THRESHOLD = 0.8
 
     # Preprocessing
@@ -873,6 +873,17 @@ class AdvancedEntityExtractor:
             return [], [], 0.0
 
         text_lower = text.lower()
+
+        # "phones" ကို "iphone" လို့ မှားပြီး match မလုပ်အောင် ဖယ်ထုတ်ခြင်းဖြစ်ပါတယ်
+        stop_words = ["phones", "phone", "ဖုန်း", "ရှိလဲ", "ပြပေး"]
+        cleaned_text = text_lower
+        for word in stop_words:
+            # စကားလုံးအနားမှာ space ပါမှ ဖယ်ထုတ်တာက ပိုစိတ်ချရပါတယ် (ဥပမာ- 'iphone' ထဲက 'phone' ကို မဖျက်မိအောင်)
+            cleaned_text = cleaned_text.replace(word, " ")
+
+        # Space အပိုတွေကို ပြန်ရှင်းထုတ်ပါ
+        cleaned_text = " ".join(cleaned_text.split())
+
         brands_found: List[str] = []
         models_found: List[str] = []
         max_confidence: float = 0.0
@@ -1484,60 +1495,3 @@ def reset_all_metrics():
     query_cache.clear()
     reset_conversation()
     logger.info("🔄 All metrics and state reset")
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# TESTING & DEBUGGING
-# ═══════════════════════════════════════════════════════════════════════════
-
-# if __name__ == "__main__":
-#     print("=" * 80)
-#     print("PRODUCTION-GRADE CHATBOT LOGIC - TEST MODE")
-#     print("=" * 80)
-#
-#     # Test conversation
-#     test_queries = [
-#         "Samsung S24 Ultra နဲ့ iPhone 15 Pro Max ရဲ့ camera ဘယ်ဟာပိုကောင်းလဲ",
-#         "price?",
-#         "battery ရော?",
-#         "storage?",
-#         "5 သိန်းအောက် Samsung ဖုန်းတွေ ဘာတွေရှိလဲ",
-#     ]
-#
-#     history = []
-#     llm = models["mistral-large"]
-#
-#     for i, query in enumerate(test_queries, 1):
-#         print(f"\n{'='*80}")
-#         print(f"Query {i}/{len(test_queries)}: {query}")
-#         print(f"{'='*80}")
-#
-#         prompt = get_final_prompt(query, history, llm)
-#
-#         # Generate response
-#         try:
-#             response = llm.invoke(prompt)
-#             answer = response.content
-#         except Exception as e:
-#             answer = f"Error: {e}"
-#
-#         print(f"\n🤖 Response:\n{answer}\n")
-#
-#         # Update history
-#         history.append({"role": "user", "content": query})
-#         history.append({"role": "assistant", "content": answer})
-#
-#     # Print comprehensive metrics
-#     print("\n" + "="*80)
-#     print("📊 PERFORMANCE METRICS")
-#     print("="*80)
-#
-#     print("\n🎯 Router Metrics:")
-#     print(json.dumps(get_router_metrics(), indent=2, ensure_ascii=False))
-#
-#     print("\n📈 Analytics Report:")
-#     print(json.dumps(get_analytics_report(), indent=2, ensure_ascii=False))
-#
-#     print("\n" + "="*80)
-#     print("TEST COMPLETE")
-#     print("="*80)
