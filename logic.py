@@ -57,7 +57,8 @@ load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    force=True  # ဒါလေး ထည့်ပေးပါ
 )
 logger = logging.getLogger(__name__)
 
@@ -421,19 +422,19 @@ models = {
     "mistral-large": ChatNVIDIA(
         model="mistralai/mistral-large-3-675b-instruct-2512",
         nvidia_api_key=Config.NVIDIA_API_KEY,
-        temperature=0.7,
+        temperature=0.5,
         max_tokens=2048
     ),
     "llama-3": ChatNVIDIA(
         model="meta/llama-3.1-70b-instruct",
         nvidia_api_key=Config.NVIDIA_API_KEY,
-        temperature=0.7,
+        temperature=0.5,
         max_tokens=2024
     ),
     "deepseek-v3": ChatNVIDIA(
         model="deepseek-ai/deepseek-v3.1",
         nvidia_api_key=Config.NVIDIA_API_KEY,
-        temperature=0.7,
+        temperature=0.5,
         max_tokens=2024
     )
 }
@@ -1133,7 +1134,7 @@ Return JSON with:
 2. "intent": Choose the most specific one:
        - "price_filter": User mentions a budget or price range (e.g., "5 သိန်းအောက်", "10 သိန်းဝန်းကျင်")
        - "model_list": User asks for available models of a specific brand (e.g., "Samsung ဘာတွေရှိလဲ")
-       - "brand_list": User asks what brands are available
+       - "brand_list": User asks what brands or phones are available. (Note: Must list ALL available options from context)
        - "spec_compare": Comparing two or more models
        - "availability": Checking if a specific model is in stock
        - "recommendation": Asking for advice (e.g., "ဂိမ်းဆော့ဖို့ ဘာကောင်းမလဲ")
@@ -1261,14 +1262,27 @@ def get_smart_context_fixed(
             except Exception as e:
                 logger.error(f"Vector search error: {e}")
 
+
     elif intent == "model_list":
+        # ဝယ်သူက Brand တစ်ခုခုကို ရည်ညွှန်းနေလား စစ်တယ်
         if context_brands:
-            sql_context = query_sqlite_fixed("brand_filter", context_brands)
-            if sql_context and "မရှိ" not in sql_context:
-                sql_parts.append(sql_context)
+            logger.info(f"Filtering models for brands: {context_brands}")
+            results = query_sqlite_fixed("brand_filter", context_brands)
+            if results and "မရှိ" not in results:
+                sql_parts.append(results)
+            else:
+                sql_parts.append(
+                    f"စိတ်မရှိပါနဲ့ခင်ဗျာ၊ {context_brands} အမျိုးအစား ဖုန်းတွေ အခုလောလောဆယ် လက်ကျန်မရှိသေးပါဘူး။")
+        else:
+            # ဘာ Brand မှ မပြောထားရင် အကုန်ပြမယ်
+            logger.info("Listing all available brands/models")
+            sql_parts.append(query_sqlite_fixed("all_brands"))
 
     elif intent == "brand_list":
-        sql_parts.append(query_sqlite_fixed("all_brands"))
+        db_result = query_sqlite_fixed("all_brands")
+        logger.info(f"📊 DB Result for all_brands: {db_result}")  # ဒီမှာ ဘာထွက်လဲ ကြည့်ပါ
+        instruction = f"ဝယ်သူကို ဒီ Brand စာရင်းအတိုင်း အကုန်လုံးပါအောင် ပြောပြပေးပါ: {db_result}"
+        sql_parts.append(instruction)
 
     # Priority 3: Brands (if no specific models)
     elif context_brands and not context_models:
@@ -1418,7 +1432,8 @@ Thai, Korea, India, Chinese, Japanese and other ဘာသာစကားတွ�
 
 လိုက်နာရမည့်စည်းကမ်းများ:
 - Context ထဲမှာ မပါရင် မခန့်မှန်းပါနဲ့။
-- User မေးထားသော သီးသန့် Model ({context_info}) နှင့်သာ ဆိုင်သော အချက်အလက်ကို ဦးစားပေး ဖြေကြားပါ။
+- ဝယ်သူက Brand အားလုံး သို့မဟုတ် ဖုန်းအားလုံး မေးလာပါက Context ထဲတွင် ပါဝင်သော Brand အားလုံးကို တစ်ခုမကျန် ဖော်ပြပေးပါ။
+- အချက်အလက်များကို ချုံ့မပစ်ပါနှင့်။
 - မဆိုင်သော Model များကို ထည့်မပြောပါနှင့်။
 - မသေချာရင် "မရှိပါ/မသေချာပါ" လို့ပြောပါ။
 - ဖုန်း brand name ကိုပြည့်စုံစွာပြောပါ။
