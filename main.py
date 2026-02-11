@@ -224,20 +224,31 @@ async def get_session(request: Request, current_user: dict = Depends(get_optiona
     conn.close()
     return {"session_id": session_id, "messages": [dict(m) for m in messages]}
 
+
 @app.post("/chat-stream")
 async def chat_stream(request: Request, current_user: dict = Depends(get_optional_user)):
     data = await request.json()
-    message, history, model_type, session_id = data.get("message", ""), data.get("history", []), data.get("model_type", "mistral-large"), data.get("session_id")
-    if not message:
-        return JSONResponse(status_code=400, content={"success": False, "message": "Message required"})
-    logger.info(f"💬 '{message[:50]}...' | {model_type} | {current_user['username'] if current_user else 'Guest'}")
+    message = data.get("message", "")
+    history = data.get("history", [])
+    model_type = data.get("model_type", "mistral-large")
+    session_id = data.get("session_id")
+
+    # 1. User Profile context တည်ဆောက်ခြင်း
+    user_context = ""
+    if current_user:
+        name = current_user.get("username", "ဧည့်သည်")
+        gender = str(current_user.get("gender", "male")).lower()
+
+        # နာမ်စား ခွဲခြားခြင်း
+        title = "ကို" if gender in ["male", "ကျား"] else "မ"
+        # စာသားအနေနဲ့ AI ကို ညွှန်ကြားချက်ပေးခြင်း
+        user_context = f"ဝယ်သူအမည်မှာ {title}{name} ဖြစ်သည်။"
 
     async def generate():
-        full = ""
         try:
             llm = get_llm(model_type)
-            logger.info("🔍 Building prompt...")
-            final_prompt = logic.get_final_prompt(message, history, llm)
+            # 2. logic function ဆီသို့ user_context လှမ်းပို့ခြင်း
+            final_prompt = logic.get_final_prompt(message, history, llm, user_info=user_context)
             messages = [{"role": h.get("role", "user"), "content": h.get("content", "")} for h in history[-4:]]
             messages.append({"role": "user", "content": final_prompt})
             logger.info("🤖 Streaming...")

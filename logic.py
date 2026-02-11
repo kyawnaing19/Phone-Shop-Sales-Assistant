@@ -1338,7 +1338,7 @@ def get_smart_context_fixed(
 # MAIN FUNCTION - PRODUCTION OPTIMIZED
 # ═══════════════════════════════════════════════════════════════════════════
 
-def get_final_prompt(message: str, history: list, llm) -> str:
+def get_final_prompt(message: str, history: list, llm, user_info: str = "") -> str:
     """
     PRODUCTION-GRADE main function
 
@@ -1421,10 +1421,11 @@ def get_final_prompt(message: str, history: list, llm) -> str:
         elif _conversation_state.current_brands:
             brands_str = ", ".join(_conversation_state.current_brands)
             context_info = f"\n🏷️  Current Brands in Discussion: {brands_str}"
-
+        personalization = f"\nစကားပြောနေသူ၏ အချက်အလက်: {user_info}" if user_info else ""
         final_prompt = f"""
-သင်သည် ယဉ်ကျေးပျူငှာသော မြန်မာဖုန်းအရောင်းဝန်ထမ်း ဖြစ်သည်။
+သင်သည် ယဉ်ကျေးပျူငှာသော မြန်မာဖုန်းအရောင်းဝန်ထမ်း ဖြစ်သည်။{personalization}
 အောက်ပါ Context ကိုသာ အခြေခံ၍ ဝယ်သူကို လိုရင်းသာ ဖြေကြားပေးပါ။
+ဝယ်သူကို သူ၏ အမည် သို့မဟုတ် နာမ်စား (ကို/မ) ကို အသုံးပြု၍ ရင်းနှီးယဉ်ကျေးစွာ နှုတ်ဆက်ပါ။
 စာကြောင်းများကို ထပ်ခါတလဲလဲ မပြောပါနှင့်။
 မြန်မာဘာသာစကားသာသုံးပါ။
 Thai, Korea, India, Chinese, Japanese and other ဘာသာစကားတွေ မသုံးပါနဲ့။
