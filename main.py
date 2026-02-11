@@ -48,7 +48,7 @@ def init_llm_models():
     }
     for key, name in models.items():
         try:
-            MODEL_REGISTRY[key] = ChatNVIDIA(model=name, api_key=nvidia_api_key, temperature=0.7, max_tokens=1024)
+            MODEL_REGISTRY[key] = ChatNVIDIA(model=name, api_key=nvidia_api_key, temperature=0.7, max_tokens=4096)
             logger.info(f"✅ Init: {key} ({name})")
         except Exception as e:
             logger.error(f"❌ Failed {key}: {e}")
@@ -219,8 +219,18 @@ async def get_session(request: Request, current_user: dict = Depends(get_optiona
         session_id = cursor.lastrowid
     else:
         session_id = session["id"]
-    messages = conn.execute("SELECT role, content, timestamp FROM chat_messages WHERE session_id = ? ORDER BY timestamp ASC LIMIT 20",
+    messages = conn.execute("""
+                SELECT * FROM (
+                    SELECT role, content, timestamp 
+                    FROM chat_messages 
+                    WHERE session_id = ? 
+                    ORDER BY timestamp DESC 
+                    LIMIT 20
+                ) AS sub 
+                ORDER BY timestamp ASC
+                """,
                            (session_id,)).fetchall()
+
     conn.close()
     return {"session_id": session_id, "messages": [dict(m) for m in messages]}
 
@@ -252,6 +262,7 @@ async def chat_stream(request: Request, current_user: dict = Depends(get_optiona
             messages = [{"role": h.get("role", "user"), "content": h.get("content", "")} for h in history[-4:]]
             messages.append({"role": "user", "content": final_prompt})
             logger.info("🤖 Streaming...")
+            full = ""
             try:
                 for chunk in llm.stream(messages):
                     text = chunk.content if hasattr(chunk, 'content') else str(chunk)
