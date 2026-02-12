@@ -42,6 +42,8 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
 
+from shop_policies import get_policy, detect_policy_category, SHOP_INFO, POLICIES_AVAILABLE
+
 # Fuzzy matching
 try:
     from rapidfuzz import fuzz, process
@@ -94,6 +96,7 @@ class Config:
     # Context management
     MAX_CONTEXT_TOKENS = 3000
     ENABLE_COMPRESSION = True
+
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -384,78 +387,11 @@ def parse_price_range(text: str) -> Tuple[Optional[int], Optional[int]]:
 # FAST INTENT CLASSIFIER
 # ═══════════════════════════════════════════════════════════════════════════
 
-class FastIntentClassifier:
-    """Rule-based intent classification"""
+# Import the advanced classifier
+from advanced_intent_classifier import HybridIntentClassifier, llm_classify_intent
 
-    def __init__(self):
-        self.patterns = {
-            Intent.GREETING: [
-                r'^(hi|hello|hey|မင်္ဂလာပါ|ဟယ်လို)',
-                r'^(good\s+(morning|afternoon|evening))',
-            ],
-            Intent.CASUAL: [
-                r'(how are you|နေကောင်းလား)',
-                r'(what is your name|သင်က ဘယ်သူ)',
-                r'^(thanks|thank you|ကျေးဇူး)',
-            ],
-            Intent.CRM_QUESTION: [
-                r'(customer\s+relationship|crm|စီအာမေ)',
-                r'(customer\s+(service|satisfaction|management))',
-            ],
-            Intent.BRAND_LIST: [
-                r'(what\s+(brands|phones)|ဘယ်.*brand|brand.*ဘာတွေ)',
-                r'(show\s+(all\s+)?phones|ဖုန်းတွေ.*ပြ)',
-                r'(ဖုန်း.*အားလုံး|all.*phones)',
-            ],
-            Intent.MODEL_LIST: [
-                r'(samsung|iphone|oppo|vivo|xiaomi).*?(models?|မော်ဒယ်|ဘာတွေ)',
-                r'(show|ပြ).*?(samsung|iphone|oppo|vivo|xiaomi)',
-            ],
-            Intent.PRICE_FILTER: [
-                r'(\d+\s*သိန်း.*(အောက်|under|below))',
-                r'(under|below|အောက်).*?\d+\s*သိန်း',
-                r'\d+\s*သိန်းနဲ့.*?(ဝယ်|ရ)',
-            ],
-            Intent.COMPARISON: [
-                r'(compare|ယှဉ်|vs|versus)',
-                r'(difference|ခြားနား)',
-            ],
-            Intent.RECOMMENDATION: [
-                r'(recommend|အကြံပြု|suggest)',
-                r'(which\s+(phone|model)|ဘယ်ဖုန်း)',
-                r'(best|အကောင်းဆုံး)',
-                r'(should\s+buy|ဝယ်သင့်)',
-            ],
-            Intent.STOCK_CHECK: [
-                r'(have|available|stock|ရှိလား|ရနိုင်)',
-            ],
-            Intent.FOLLOWUP: [
-                r'^(အဲဒါ|ဒါ|သူ|that|it)',
-                r'^(ဈေး|price|battery|camera)\??$',
-            ],
-        }
-
-    def classify(self, message: str, has_history: bool = False) -> Intent:
-        msg_lower = message.lower().strip()
-
-        for intent, patterns in self.patterns.items():
-            if intent == Intent.FOLLOWUP and not has_history:
-                continue
-
-            for pattern in patterns:
-                if re.search(pattern, msg_lower):
-                    logger.info(f"🎯 Fast Intent: {intent.value}")
-                    return intent
-
-        # Check product keywords
-        if any(kw in msg_lower for kw in ['phone', 'ဖုန်း', 'mobile']):
-            return Intent.SPEC_SEARCH
-
-        return Intent.UNKNOWN
-
-
-fast_classifier = FastIntentClassifier()
-
+# Create global classifier instance
+hybrid_classifier = HybridIntentClassifier()
 
 # ═══════════════════════════════════════════════════════════════════════════
 # LLM QUERY UNDERSTANDING
@@ -601,10 +537,26 @@ def build_context_complete(understanding: QueryUnderstanding) -> str:
     intent = understanding.intent
 
     # ========================================
-    # GREETING / CASUAL / CRM - No context
+    # CRM QUESTION - Load shop policies (FIRST!)
     # ========================================
-    if intent in [Intent.GREETING, Intent.CASUAL, Intent.CRM_QUESTION]:
+    if intent == Intent.CRM_QUESTION:
+        if POLICIES_AVAILABLE:
+            # Detect which policy is needed
+            category = detect_policy_category(understanding.standalone_query)
+            policy_text = get_policy(category)
+
+            logger.info(f"📋 CRM Policy: {category}")
+            return policy_text
+        else:
+            # Fallback if policies file not available
+            return "CRM အကြောင်း အထွေထွေ အချက်အလက်များကို ဖြေကြားပေးပါ။"
+
+    # ========================================
+    # GREETING / CASUAL - No context
+    # ========================================
+    if intent in [Intent.GREETING, Intent.CASUAL]:
         return ""
+
 
     # ========================================
     # BRAND LIST - Show ALL brands
@@ -834,13 +786,29 @@ User: {understanding.standalone_query}
 
 ယဉ်ကျေးစွာ ဖြေကြားပါ။"""
 
+    # Find the CRM prompt section and update it:
+
     if understanding.intent == Intent.CRM_QUESTION:
-        return f"""သင်သည် မြန်မာဖုန်းဆိုင် အရောင်းဝန်ထမ်း ဖြစ်သည်။{personalization}
+        if context:  # We have shop policies
+            return f"""သင်သည် {SHOP_INFO.get('name_myanmar', 'မြန်မာဖုန်းဆိုင်')} ၏ အရောင်းဝန်ထမ်း ဖြစ်သည်။{personalization}
 
-User က CRM အကြောင်း မေးနေပါသည်: {understanding.standalone_query}
+    User မေးခွန်း: {understanding.standalone_query}
 
-CRM (Customer Relationship Management) အကြောင်း ရှင်းပြပေးပါ။
-မြန်မာလို ဖြေကြားပါ။"""
+    ဆိုင်မူဝါဒ:
+    {context}
+
+    ⚠️ အရေးကြီး:
+    ✅မလိုအပ်သော စကားများ မပြောရ - အဖြေကို တိုက်ရိုက် ပြပေးပါ
+    ✅ Context ထဲ မပါတာကို မခန့်မှန်းရ
+    ✅ အထက်ပါ မူဝါဒအတိုင်း တိကျစွာ ဖြေကြားပါ
+    ✅ မူဝါဒ၌ မပါသော အရာများကို မဖြေရ
+    ✅ ဖုန်းနံပါတ်နှင့် လိပ်စာကို ပြည့်စုံစွာ ပေးပါ
+
+    မြန်မာလို ရှင်းလင်းစွာ ဖြေကြားပေးပါ။"""
+        else:  # Generic CRM answer
+            return f"""သင်သည် မြန်မာဖုန်းဆိုင် အရောင်းဝန်ထမ်း ဖြစ်သည်။{personalization}
+            မလိုအပ်သော စကားများ မပြောရ - အဖြေကို တိုက်ရိုက် ပြပေးပါ
+            မြန်မာလို ရှင်းလင်းစွာ ဖြေကြားပါ။"""
 
     # Data-driven intents
     instructions = {
@@ -1061,7 +1029,21 @@ def get_final_prompt(message: str, history: list, llm, user_info: str = "") -> s
         # ========================================
         # STEP 2: Fast Intent Classification
         # ========================================
-        fast_intent = fast_classifier.classify(message, has_history=len(history) > 0)
+        # New way - with LLM fallback
+        def use_llm_for_classification(msg):
+            return llm_classify_intent(msg, llm)
+
+        fast_intent, confidence = hybrid_classifier.classify(
+            message,
+            has_history=len(history) > 0,
+            use_llm=use_llm_for_classification
+        )
+
+        logger.info(f"Intent confidence: {confidence:.2f}")
+
+        # If confidence is too low, you can ask for clarification
+        if confidence < 0.4:
+            logger.warning(f"Low confidence classification: {fast_intent.value}")
 
         # ========================================
         # STEP 3: Entity Extraction
