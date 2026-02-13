@@ -1,7 +1,7 @@
 import sqlite3
 
 # ==== Change this to your database file ====
-DB_PATH = "/home/pyae-phyo-aung/PycharmProjects/MyanmarMobileSaleChatbot/Mobile_Sales_Project/users.db"
+DB_PATH = "/home/pyae-phyo-aung/PycharmProjects/MyanmarMobileSaleChatbot/Mobile_Sales_Project/phones.db"
 # Example: DB_PATH = "mobiles.db"
 
 def show_database_structure(db_path):

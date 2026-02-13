@@ -110,6 +110,8 @@
                         <th class="p-4 text-left text-sm font-medium text-gray-300">Stock</th>
                         <th class="p-4 text-left text-sm font-medium text-gray-300">Specifications</th>
                         <th class="p-4 text-left text-sm font-medium text-gray-300">Best For</th>
+                        <th class="p-4 text-left text-sm font-medium text-gray-300">RAM/Storage</th>
+                        <th class="p-4 text-left text-sm font-medium text-gray-300">Color</th>
                         <th class="p-4 text-left text-sm font-medium text-gray-300">Status</th>
                     </tr>
                 </thead>
@@ -160,6 +162,36 @@
                                     </summary>
                                     <div class="mt-2 p-2 bg-blue-500/10 border border-blue-500/20 rounded-lg text-xs text-blue-200">
                                         {{ item.best_for }}
+                                    </div>
+                                </details>
+                            </div>
+                        </td>
+                        <td class="p-4">
+                            <div class="max-w-[150px]">
+                                <details class="group cursor-pointer">
+                                    <summary class="list-none">
+                                        <span class="px-3 py-1 rounded-full text-[10px] font-medium bg-blue-500/20 text-blue-300 group-open:hidden block truncate">
+                                            {{ item.ram_storage }}
+                                        </span>
+                                        <span class="hidden group-open:inline text-xs font-medium text-blue-300 underline">Hide</span>
+                                    </summary>
+                                    <div class="mt-2 p-2 bg-blue-500/10 border border-blue-500/20 rounded-lg text-xs text-blue-200">
+                                        {{ item.ram_storage }}
+                                    </div>
+                                </details>
+                            </div>
+                        </td>
+                        <td class="p-4">
+                            <div class="max-w-[150px]">
+                                <details class="group cursor-pointer">
+                                    <summary class="list-none">
+                                        <span class="px-3 py-1 rounded-full text-[10px] font-medium bg-blue-500/20 text-blue-300 group-open:hidden block truncate">
+                                            {{ item.color }}
+                                        </span>
+                                        <span class="hidden group-open:inline text-xs font-medium text-blue-300 underline">Hide</span>
+                                    </summary>
+                                    <div class="mt-2 p-2 bg-blue-500/10 border border-blue-500/20 rounded-lg text-xs text-blue-200">
+                                        {{ item.color }}
                                     </div>
                                 </details>
                             </div>

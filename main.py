@@ -330,10 +330,10 @@ async def add(brand: str = Form(...), model: str = Form(...), price: int = Form(
     return RedirectResponse(url="/inventory", status_code=303)
 
 @app.post("/update/{item_id}")
-async def update(item_id: int, brand: str = Form(...), model: str = Form(...), price: int = Form(...), qty: int = Form(...), specs: str = Form(...), best_for: str = Form(...)):
+async def update(item_id: int, brand: str = Form(...), model: str = Form(...), price: int = Form(...), qty: int = Form(...), specs: str = Form(...), best_for: str = Form(...), ram_storage: str = Form(...), color: str = Form(...)):
     conn = get_db_conn()
-    conn.execute("UPDATE products SET brand=?, model=?, price=?, quantity=?, specifications=?, best_for=? WHERE id=?",
-                 (brand, model, price, qty, specs, best_for, item_id))
+    conn.execute("UPDATE products SET brand=?, model=?, price=?, quantity=?, specifications=?, best_for=?, ram_storage=?, color=? WHERE id=?",
+                 (brand, model, price, qty, specs, best_for, ram_storage, color, item_id))
     conn.commit()
     conn.close()
     return RedirectResponse(url="/manage", status_code=303)
@@ -383,6 +383,13 @@ async def startup():
     logger.info(f"🤖 Models: {', '.join(MODEL_REGISTRY.keys())}")
     logger.info(f"🔐 SECRET_KEY: {'✅ From .env' if os.getenv('SECRET_KEY') else '⚠️ Default (DEV ONLY)'}")
     logger.info("="*80)
+@app.get("/reset")
+async def handle_reset():
+    logic.reset_conversation()
+    logic.reset_all_metrics()
+    logic.get_router_metrics()
+    return {"status": "success", "message": "Conversation memory cleared"}
+
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

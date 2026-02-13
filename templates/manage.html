@@ -42,6 +42,8 @@
                             data-qty="{{ item.quantity }}"
                             data-specs="{{ item.specifications }}"
                             data-best="{{ item.best_for }}"
+                            data-ram_storage="{{ item.ram_storage }}"
+                            data-color="{{ item.color }}"
                             class="bg-gray-900 text-white py-2">
                         {{ item.brand }} {{ item.model }} - {{ "{:,}".format(item.price) }} MMK ({{ item.quantity }} in
                         stock)
@@ -71,7 +73,7 @@
             </div>
 
             <form id="updateFormElement" action="" method="POST" class="space-y-8">
-                <input type="hidden" name="model" id="form_model_id">
+                <input type="hidden" name="product_id" id="form_product_id">
 
                 <!-- Basic Information Section -->
                 <div class="space-y-6">
@@ -94,7 +96,14 @@
                                        class="w-full bg-gray-900 border border-gray-700 rounded-xl pl-12 pr-4 py-3.5 text-gray-400 cursor-not-allowed outline-none transition-all duration-200">
                             </div>
                         </div>
-
+<div class="space-y-3">
+                            <label class="block text-sm font-medium text-gray-300">Model Name</label>
+                            <div class="relative group">
+                                <i class="fas fa-tag absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500"></i>
+                                <input type="text" name="model" id="form_model"
+                                       class="w-full bg-gray-900 border border-gray-700 rounded-xl pl-12 pr-4 py-3.5 text-gray-400 outline-none transition-all duration-200">
+                            </div>
+                        </div>
                         <!-- Price Input -->
                         <div class="space-y-3">
                             <label class="block text-sm font-medium text-gray-300">Price (MMK)</label>
@@ -159,6 +168,43 @@
                     </div>
                 </div>
 
+                <div class="space-y-6 pt-6 border-t border-gray-700">
+                    <h4 class="text-lg font-semibold text-white flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-green-500/20 to-green-600/20 flex items-center justify-center">
+                            <i class="fas fa-bullseye text-green-400"></i>
+                        </div>
+                        <span>Ram/Storage</span>
+                    </h4>
+
+                    <div class="space-y-3">
+                        <label class="block text-sm font-medium text-gray-300">Storage</label>
+                        <div class="relative group">
+                            <i class="fas fa-users absolute left-4 top-4 text-gray-500 group-focus-within:text-green-400 transition-colors"></i>
+                            <textarea name="ram_storage" id="form_ram_storage" rows="3"
+                                      class="w-full bg-gray-800/50 border border-gray-700 hover:border-green-500/50 focus:border-green-500 rounded-xl pl-12 pr-4 py-3.5 text-white outline-none transition-all duration-200 focus:ring-2 focus:ring-green-500/30 resize-none"></textarea>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2"> eg. 12GB RAM, 256 ROM</p>
+                    </div>
+                </div>
+
+                <div class="space-y-6 pt-6 border-t border-gray-700">
+                    <h4 class="text-lg font-semibold text-white flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-green-500/20 to-green-600/20 flex items-center justify-center">
+                            <i class="fas fa-bullseye text-green-400"></i>
+                        </div>
+                        <span>Color</span>
+                    </h4>
+
+                    <div class="space-y-3">
+                        <label class="block text-sm font-medium text-gray-300">Color</label>
+                        <div class="relative group">
+                            <i class="fas fa-users absolute left-4 top-4 text-gray-500 group-focus-within:text-green-400 transition-colors"></i>
+                            <textarea name="color" id="form_color" rows="3"
+                                      class="w-full bg-gray-800/50 border border-gray-700 hover:border-green-500/50 focus:border-green-500 rounded-xl pl-12 pr-4 py-3.5 text-white outline-none transition-all duration-200 focus:ring-2 focus:ring-green-500/30 resize-none"></textarea>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">Add one color</p>
+                    </div>
+                </div>
                 <!-- Action Buttons -->
                 <div class="pt-8 border-t border-gray-700">
                     <div class="flex flex-col sm:flex-row gap-4">
@@ -218,12 +264,15 @@ function updateForm() {
     editArea.style.transform = 'translateY(20px)';
 
     const id = selected.value; // THIS is the item_id
-    document.getElementById('form_model_id').value = id;
+    document.getElementById('form_product_id').value = id;
     document.getElementById('form_brand').value = selected.getAttribute('data-brand');
+    document.getElementById('form_model').value = selected.getAttribute('data-model');
     document.getElementById('form_price').value = selected.getAttribute('data-price');
     document.getElementById('form_qty').value = selected.getAttribute('data-qty');
     document.getElementById('form_specs').value = selected.getAttribute('data-specs');
     document.getElementById('form_best').value = selected.getAttribute('data-best');
+    document.getElementById('form_ram_storage').value = selected.getAttribute('data-ram_storage');
+    document.getElementById('form_color').value = selected.getAttribute('data-color');
 
     // Set form action dynamically for update
     document.getElementById('updateFormElement').action = "/update/" + id;
@@ -238,7 +287,7 @@ function updateForm() {
 }
 
 function confirmDelete() {
-    const id = document.getElementById('form_model_id').value;
+    const id = document.getElementById('form_product_id').value;
     const brand = document.getElementById('form_brand').value;
 
     const modal = document.createElement('div');

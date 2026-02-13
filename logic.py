@@ -152,7 +152,7 @@ def get_all_products() -> List[Dict]:
     """Get ALL products"""
     with get_db_connection() as conn:
         cursor = conn.execute("""
-            SELECT brand, model, price, quantity, specifications, best_for 
+            SELECT brand, model, price, quantity, specifications, best_for, ram_storage, color 
             FROM products 
             ORDER BY brand, price ASC
         """)
@@ -165,7 +165,7 @@ def get_models_by_brand(brand: str) -> List[Dict]:
     """Get ALL models for a brand"""
     with get_db_connection() as conn:
         cursor = conn.execute("""
-            SELECT brand, model, price, quantity, specifications, best_for 
+            SELECT brand, model, price, quantity, specifications, best_for, ram_storage, color 
             FROM products 
             WHERE LOWER(brand) = LOWER(?)
             ORDER BY price ASC
@@ -185,7 +185,7 @@ def filter_products(
     """Filter products with multiple criteria"""
     with get_db_connection() as conn:
         query = """
-            SELECT brand, model, price, quantity, specifications, best_for 
+            SELECT brand, model, price, quantity, specifications, best_for, ram_storage, color 
             FROM products 
             WHERE 1=1
         """
@@ -518,6 +518,8 @@ def format_product_full(p: Dict) -> str:
    💰 ဈေး: {format_price(p['price'])}
    📦 လက်ကျန်: {p['quantity']} လုံး
    ⚙️ အချက်အလက်: {p['specifications']}
+   ⚙️ Ram/Rom: {p['ram_storage']}
+   ⚙️ Available Color: {p['color']}
    ✨ သင့်လျော်: {p['best_for']}"""
 
 
@@ -817,12 +819,14 @@ User: {understanding.standalone_query}
 - Context ထဲက Brand အားလုံးကို ပြပေးရမည်
 - တစ်ခုမကျန် ဖော်ပြရမည်
 - မော်ဒယ်အရေအတွက်နှင့် ဈေးနှုန်းအပိုင်းအခြား ပြပါ
--မေးခွန်းထဲတွင် Brands များကို လုံးဝ (လုံးဝ) ထပ်မဖြည့်ပါနှင့်။""",
+- မေးခွန်းထဲတွင် Brands များကို လုံးဝ (လုံးဝ) ထပ်မဖြည့်ပါနှင့်။
+- Contexts ထဲမှာမပါတဲ့ color တွေမထည့်ပါနဲ့။ မရှိရင် မရှိဘူးလို့ဘဲဖြေပါ။""",
 
         Intent.MODEL_LIST: """
 🎯 လုပ်ဆောင်ချက်:
 - Context ထဲက မော်ဒယ် အားလုံးကို ပြပေးရမည် တစ်ခုမှ မဖြုတ်ချရ
-- Context ထဲ မပါတာကို မခန့်မှန်းရ""",
+- Context ထဲ မပါတာကို မခန့်မှန်းရ
+- Contexts ထဲမှာမပါတဲ့ color တွေမထည့်ပါနဲ့။ မရှိရင် မရှိဘူးလို့ဘဲဖြေပါ။""",
 
         Intent.PRICE_FILTER: """
 🎯 လုပ်ဆောင်ချက်:
@@ -856,6 +860,7 @@ User: {understanding.standalone_query}
 ✅ Brand မျိုးစုံ ပါအောင် ပြပေးရမည်
 ✅ မလိုအပ်သော စကားများ မပြောရ - အဖြေကို တိုက်ရိုက် ပြပေးပါ
 ❌ Context ထဲ မပါတာကို မခန့်မှန်းရ
+❌ Contexts ထဲမှာမပါတဲ့ color တွေမထည့်ပါနဲ့။ မရှိရင် မရှိဘူးလို့ဘဲဖြေပါ။
 
 Context:
 {context}
