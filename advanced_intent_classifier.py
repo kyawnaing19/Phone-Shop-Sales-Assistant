@@ -1,14 +1,14 @@
 """
 ╔══════════════════════════════════════════════════════════════════════════╗
-║              ADVANCED INTENT CLASSIFICATION SYSTEM                       ║
+║              ADVANCED INTENT CLASSIFICATION SYSTEM - v2.0                ║
+║              Enhanced for RAM/Storage & Color queries                    ║
 ║              Hybrid Approach: Rules + Embeddings + LLM                   ║
 ║                                                                          ║
-║  SOLVES: Missing keyword problems                                        ║
-║  METHOD: Multi-strategy with fallback                                    ║
-║                                                                          ║
-║  Strategy 1: Comprehensive Rule-based (Fast)                             ║
-║  Strategy 2: Semantic Similarity (Fuzzy)                                 ║
-║  Strategy 3: LLM Classification (Accurate)                               ║
+║  UPDATES:                                                                ║
+║  ✓ Added RAM/Storage search intent                                     ║
+║  ✓ Added Color search intent                                           ║
+║  ✓ Enhanced technical support detection                                ║
+║  ✓ Stricter data source boundaries                                     ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 """
 
@@ -28,16 +28,19 @@ logger = logging.getLogger(__name__)
 
 class Intent(str, Enum):
     """Intent types with detailed descriptions"""
-    # No DB needed
+    # No DB needed - Non-sales queries
     GREETING = "greeting"
     CASUAL = "casual"
     CRM_QUESTION = "crm_question"
+    TECHNICAL_SUPPORT = "technical_support"  # NEW: For phone usage help
 
-    # DB needed
+    # DB needed - Sales & Product queries
     BRAND_LIST = "brand_list"
     MODEL_LIST = "model_list"
     PRICE_FILTER = "price_filter"
     SPEC_SEARCH = "spec_search"
+    RAM_STORAGE_SEARCH = "ram_storage_search"  # NEW
+    COLOR_SEARCH = "color_search"  # NEW
     COMPARISON = "comparison"
     RECOMMENDATION = "recommendation"
     STOCK_CHECK = "stock_check"
@@ -68,6 +71,15 @@ INTENT_EXAMPLES = {
         "အချက်အလက်လုံခြုံရေး", "ကူညီမှု", "ဝန်ဆောင်မှု",
     ],
 
+    Intent.TECHNICAL_SUPPORT: [
+        "how to use", "how to setup", "how to install", "how to transfer",
+        "phone not working", "battery draining", "screen frozen", "wifi problem",
+        "bluetooth issue", "camera not working", "app crashing", "update phone",
+        "ဘယ်လို အသုံးပြုရမလဲ", "ဖုန်း ဘယ်လို သုံးရမလဲ", "setting ပြင်",
+        "transfer လုပ်နည်း", "backup လုပ်နည်း", "ဖုန်း မလုပ်ဘူး",
+        "battery သုံးပြီး", "screen အလုပ်မလုပ်", "wifi မတက်",
+    ],
+
     Intent.BRAND_LIST: [
         "what brands", "show phones", "available phones", "all phones",
         "what phones do you have", "phone brands", "which brands",
@@ -90,6 +102,18 @@ INTENT_EXAMPLES = {
     Intent.SPEC_SEARCH: [
         "good camera phone", "long battery", "gaming phone", "camera ကောင်းတဲ့",
         "battery ကြာတဲ့", "ဂိမ်းဆော့ဖို့", "5G phone", "fast charging",
+    ],
+
+    Intent.RAM_STORAGE_SEARCH: [
+        "8GB RAM", "256GB storage", "12GB RAM phone", "512GB storage",
+        "8GB RAM နဲ့", "256GB ရှိတဲ့", "RAM 12GB", "storage ကြီးတဲ့",
+        "memory ကြီးတဲ့", "internal storage", "ROM 256",
+    ],
+
+    Intent.COLOR_SEARCH: [
+        "black phone", "white color", "blue phones", "red available",
+        "နက်ရောင်", "အဖြူရောင်", "အပြာရောင်", "အနီရောင်",
+        "ဘယ်အရောင်ရှိလဲ", "available colors", "color options",
     ],
 
     Intent.COMPARISON: [
@@ -169,7 +193,6 @@ class RuleBasedClassifier:
                 r'(open|close|ဖွင့်|ပိတ်).*(time|hour|when|ချိန်)',
                 r'(what.*time.*open|when.*open|schedule)',
                 r'(ဆိုင်|shop).*(ဖွင့်|ပိတ်|အချိန်)',
-                r'(အချိန်|ချိန်)',
 
                 # Warranty - EXPANDED
                 r'(warranty|guarantee|အာမခံ)',
@@ -198,10 +221,27 @@ class RuleBasedClassifier:
                 # Privacy - EXPANDED
                 r'(privacy|private|personal|data)',
                 r'(security|secure|safe|protected|လုံခြုံ)',
-                r'(information|data|details)',
+            ],
 
-                # General CRM
-                r'(crm|customer.*relationship)',
+            Intent.TECHNICAL_SUPPORT: [
+                # Usage & Setup
+                r'(how\s+to|ဘယ်လို).*(use|သုံး|setup|install|config)',
+                r'(how\s+do\s+i).*(transfer|backup|restore|sync)',
+                r'(setting|ဆက်တင်).*(change|ပြင်|adjust)',
+
+                # Troubleshooting
+                r'(phone|ဖုန်း).*(not\s+working|problem|မလုပ်|ပျက်)',
+                r'(battery|ဘက်ထရီ).*(drain|fast|သုံးပြီး|ကုန်)',
+                r'(screen|မျက်နှာပြင်).*(frozen|black|stuck|freeze)',
+                r'(wifi|ဝိုင်ဖိုင်).*(not\s+connect|problem|မတက်)',
+                r'(bluetooth|ဘလူးတုသ်).*(not\s+work|issue)',
+                r'(app|အက်ပ်).*(crash|close|freeze|ပိတ်သွား)',
+                r'(camera|ကင်မရာ).*(not\s+work|blurry|မရှင်း)',
+
+                # Software
+                r'(update|အပ်ဒိတ်).*(software|system|phone)',
+                r'(factory\s+reset|restore|ပြန်လည်သတ်မှတ်)',
+                r'(how\s+to.*screenshot|screen\s+record)',
             ],
 
             Intent.BRAND_LIST: [
@@ -220,137 +260,128 @@ class RuleBasedClassifier:
             ],
 
             Intent.PRICE_FILTER: [
-                r'(\d+|သိန်း|lakh).*(သိန်း|lakh).*(အောက်|under|below|less)',
-                r'(under|below|အောက်|မကျော်).*(သိန်း|lakh|\d+)',
-                r'(budget|ဘတ်ဂျက်|ငွေ).*(သိန်း|\d+)',
-                r'(သိန်း|\d+).*(နဲ့|ဖြင့်).*(ဝယ်|ရ)',
-                r'(cheap|affordable|သက်သာ|စျေးသက်သာ)',
-                r'(price.*range|ဈေး.*အကြား)',
+                r'(under|below|less\s+than|အောက်).*(lakh|သိန်း|\d+)',
+                r'(budget|price|ဈေး).*(range|under|between)',
+                r'(\d+)\s*(lakh|သိန်း).*(under|below|အောက်)',
+                r'(cheap|affordable|သက်သာ)',
             ],
 
             Intent.SPEC_SEARCH: [
-                r'(camera|ကင်မရာ).*(good|best|ကောင်း|အကောင်းဆုံး)',
-                r'(battery|ဘက်ထရီ).*(long|good|ကြာ|ကောင်း)',
-                r'(gaming|game|ဂိမ်း)',
-                r'(5g|4g|network)',
-                r'(fast.*charg|quick.*charg)',
-                r'(display|screen|မျက်နှာပြင်)',
-                r'(ram|rom|storage|memory)',
+                r'(camera|ကင်မရာ).*(good|best|ကောင်း|excellent)',
+                r'(battery|ဘက်ထရီ).*(long|last|ကြာ|good)',
+                r'(gaming|ဂိမ်း).*(phone|ဖုန်း)',
+                r'(5g|4g).*(phone|support|network)',
+                r'(fast\s+charg|quick\s+charg|မြန်တဲ့.*အားသွင်း)',
+                r'(processor|chip|performance|အမြန်)',
+            ],
+
+            Intent.RAM_STORAGE_SEARCH: [
+                # RAM patterns
+                r'\b(\d+)\s*gb\s*(ram|ရမ်)\b',
+                r'(ram|ရမ်|memory).*?(\d+)\s*gb',
+                r'(\d+)\s*(gb|ဂျီဘီ).*(ram|ရမ်|memory)',
+
+                # Storage patterns
+                r'\b(\d+)\s*gb\s*(storage|rom|ရုမ်)\b',
+                r'(storage|rom|ရုမ်|internal).*?(\d+)\s*gb',
+                r'(\d+)\s*(gb|tb|ဂျီဘီ).*(storage|rom|ရုမ်)',
+
+                # Combined
+                r'(\d+)\s*gb.*?(\d+)\s*gb',  # e.g., "8GB 256GB"
+                r'(memory|သိုလှောင်မှု).*(ကြီး|များ|large)',
+            ],
+
+            Intent.COLOR_SEARCH: [
+                # English colors
+                r'(black|white|blue|red|green|gold|silver|pink|purple).*(phone|color|available)',
+                r'(phone|model).*(black|white|blue|red|green|gold|silver)',
+                r'(available|come).*(color|အရောင်)',
+
+                # Myanmar colors
+                r'(နက်|အဖြူ|အပြာ|အနီ|အစိမ်း|ရွှေ|ငွေ|ပန်း|ခရမ်း).*(ရောင်|ရှိ)',
+                r'(အရောင်|ရောင်).*(ဘယ်|ဘာ|တွေ|များ)',
+                r'ဘယ်အရောင်ရှိလဲ',
             ],
 
             Intent.COMPARISON: [
-                r'(compare|comparison|ယှဉ်)',
-                r'(vs|versus|နဲ့)',
-                r'(difference|differ|ခြား)',
-                r'(better|best|ပိုကောင်း).*(than|or)',
-                r'(which.*better|ဘယ်ဟာ.*ပိုကောင်း)',
+                r'(compar|vs|versus).*(phone|model)',
+                r'(difference|differ).*(between)',
+                r'(which|ဘယ်).*(better|best|ကောင်း)',
+                r'(iphone|samsung|xiaomi).*(vs|နဲ့|and).*(iphone|samsung|xiaomi)',
+                r'ယှဉ်ကြည့်',
             ],
 
             Intent.RECOMMENDATION: [
-                r'(recommend|suggest|advise|အကြံပြု)',
-                r'(which.*(should|phone|buy)|ဘယ်.*ဖုန်း)',
-                r'(best|အကောင်းဆုံး)',
-                r'(good.*phone|phone.*good)',
-                r'(help.*choose|ရွေး.*ပေး)',
+                r'(which|what).*(should|recommend|suggest)',
+                r'(best|top|ကောင်း).*(phone|choice|option)',
+                r'(recommend|suggest|advice|အကြံပြု)',
+                r'ဘယ်ဖုန်း.*ဝယ်',
             ],
 
             Intent.STOCK_CHECK: [
-                r'(have|got).*(stock|available|ရှိ)',
-                r'(available|in.*stock|ရနိုင်|ရှိလား)',
-                r'(do.*have|can.*get)',
-                r'(stock|လက်ကျန်|ပမာဏ)',
+                r'(do\s+you\s+have|got|available)',
+                r'(in\s+stock|stock|လက်ကျန်)',
+                r'(ရှိ|ရ|ရနိုင်)လား',
             ],
 
             Intent.FOLLOWUP: [
                 r'^(that|this|those|these|it)(\s|$)',
-                r'^(အဲဒါ|ဒါ|သူ|ဟို)(\s|$)',
-                r'^(ဈေး|price|battery|camera|spec)s?\??$',
-                r'^(how.*much|ဘယ်လောက်)\??$',
+                r'^(the\s+)?price',
+                r'^(how\s+much)',
+                r'^(အဲ|ဒါ|သူ|ဟို)',
             ],
         }
 
     def classify(self, message: str, has_history: bool = False) -> Tuple[Intent, float]:
         """
-        Classify using comprehensive patterns
+        Rule-based classification using pattern matching
         Returns: (intent, confidence_score)
         """
-        msg_lower = message.lower().strip()
+        msg_lower = message.lower()
 
-        # Check each intent's patterns
+        # Check each pattern
         for intent, patterns in self.patterns.items():
-            # Skip FOLLOWUP if no history
-            if intent == Intent.FOLLOWUP and not has_history:
-                continue
-
-            for i, pattern in enumerate(patterns):
-                if re.search(pattern, msg_lower, re.IGNORECASE):
-                    # Confidence based on pattern specificity
-                    # More specific patterns (later in list) = higher confidence
-                    confidence = 0.7 + (i / len(patterns)) * 0.3
-                    logger.info(f"🎯 Rule Match: {intent.value} (conf={confidence:.2f})")
+            for pattern in patterns:
+                if re.search(pattern, msg_lower):
+                    # Higher confidence for longer matches
+                    confidence = min(0.9, 0.7 + (len(pattern) / 200))
+                    logger.info(f"✅ Rule Match: {intent.value} (pattern: {pattern[:50]}...)")
                     return intent, confidence
 
-        # No pattern matched
+        # Followup gets special treatment with history
+        if has_history and len(message.split()) <= 3:
+            logger.info(f"🔗 Likely followup (short message with history)")
+            return Intent.FOLLOWUP, 0.6
+
         return Intent.UNKNOWN, 0.0
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# SEMANTIC SIMILARITY CLASSIFIER
+# SEMANTIC CLASSIFIER
 # ═══════════════════════════════════════════════════════════════════════════
 
 class SemanticClassifier:
     """
-    Use semantic similarity to catch queries with missing keywords
-    Uses simple word overlap and fuzzy matching
+    Keyword-based semantic matching
+    Catches queries that don't match exact patterns
     """
 
     def __init__(self):
         self.intent_keywords = self._build_keyword_sets()
 
     def _build_keyword_sets(self) -> Dict[Intent, set]:
-        """Build comprehensive keyword sets for each intent"""
-        return {
-            Intent.CRM_QUESTION: {
-                # English
-                'phone', 'number', 'contact', 'call', 'reach', 'address', 'location',
-                'where', 'shop', 'store', 'hour', 'time', 'open', 'close', 'warranty',
-                'guarantee', 'return', 'refund', 'exchange', 'payment', 'pay', 'method',
-                'support', 'help', 'service', 'privacy', 'data', 'security',
-                # Myanmar
-                'ဖုန်း', 'နံပါတ်', 'ဆက်သွယ်', 'လိပ်စာ', 'ဆိုင်', 'နေရာ', 'ဘယ်မှာ',
-                'အချိန်', 'ဖွင့်', 'ပိတ်', 'အာမခံ', 'ပြန်အမ်း', 'ငွေ', 'ကူညီ',
-            },
-
-            Intent.BRAND_LIST: {
-                'brand', 'brands', 'phone', 'phones', 'available', 'have', 'show',
-                'list', 'all', 'ဖုန်း', 'ရှိ', 'ပြ', 'အားလုံး', 'ဘာတွေ',
-            },
-
-            Intent.PRICE_FILTER: {
-                'price', 'budget', 'cheap', 'under', 'below', 'lakh', 'affordable',
-                'ဈေး', 'ဘတ်ဂျက်', 'သိန်း', 'အောက်', 'သက်သာ',
-            },
-
-            Intent.SPEC_SEARCH: {
-                'camera', 'battery', 'gaming', 'game', 'display', 'screen', '5g',
-                'ram', 'storage', 'fast', 'charging',
-                'ကင်မရာ', 'ဘက်ထရီ', 'ဂိမ်း', 'မျက်နှာပြင်',
-            },
-
-            Intent.COMPARISON: {
-                'compare', 'comparison', 'vs', 'versus', 'difference', 'better',
-                'ယှဉ်', 'နဲ့', 'ခြား', 'ပိုကောင်း',
-            },
-
-            Intent.RECOMMENDATION: {
-                'recommend', 'suggest', 'which', 'should', 'buy', 'best', 'choose',
-                'အကြံပြု', 'ဘယ်', 'ဝယ်', 'အကောင်းဆုံး', 'ရွေး',
-            },
-        }
+        """Convert examples to keyword sets"""
+        keyword_sets = {}
+        for intent, examples in INTENT_EXAMPLES.items():
+            keywords = set()
+            for example in examples:
+                keywords.update(re.findall(r'\w+', example.lower()))
+            keyword_sets[intent] = keywords
+        return keyword_sets
 
     def classify(self, message: str) -> Tuple[Intent, float]:
         """
-        Classify using keyword overlap
+        Semantic classification using keyword overlap
         Returns: (intent, confidence_score)
         """
         msg_lower = message.lower()
@@ -494,11 +525,14 @@ Query: "{message}"
 Intent categories:
 - greeting: Greetings, hello
 - casual: Casual chat, thank you, ok
-- crm_question: Phone number, address, hours, warranty, payment, support
+- crm_question: Phone number, address, hours, warranty, payment, support, shop policies
+- technical_support: How to use phone, troubleshooting, phone problems, settings help
 - brand_list: What phones/brands available
 - model_list: Show models of a specific brand
 - price_filter: Phones within price range
-- spec_search: Phones with specific features (camera, battery, gaming)
+- spec_search: Phones with specific features (camera, battery, gaming, processor)
+- ram_storage_search: Phones with specific RAM or storage (e.g., 8GB RAM, 256GB storage)
+- color_search: Phones in specific colors or asking about available colors
 - comparison: Compare two or more phones
 - recommendation: Which phone to buy, suggestions
 - stock_check: Is phone available
@@ -536,6 +570,36 @@ Return ONLY JSON:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# UTILITY FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════════
+
+def is_database_intent(intent: Intent) -> bool:
+    """Check if intent requires database access"""
+    db_intents = {
+        Intent.BRAND_LIST,
+        Intent.MODEL_LIST,
+        Intent.PRICE_FILTER,
+        Intent.SPEC_SEARCH,
+        Intent.RAM_STORAGE_SEARCH,
+        Intent.COLOR_SEARCH,
+        Intent.COMPARISON,
+        Intent.RECOMMENDATION,
+        Intent.STOCK_CHECK,
+    }
+    return intent in db_intents
+
+
+def is_policy_intent(intent: Intent) -> bool:
+    """Check if intent requires shop policy knowledge"""
+    return intent == Intent.CRM_QUESTION
+
+
+def is_technical_support_intent(intent: Intent) -> bool:
+    """Check if intent is technical support (can use LLM general knowledge)"""
+    return intent == Intent.TECHNICAL_SUPPORT
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # USAGE EXAMPLE
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -546,17 +610,18 @@ if __name__ == "__main__":
     # Test queries
     test_queries = [
         # CRM - Different ways to ask
-        "ဖုန်းနံပါတ် ဘယ်လောက်လဲ?",  # Direct
-        "ဆက်သွယ်ချင်တယ်",  # No "number" keyword
-        "ဘယ်လိုခေါ်ရမလဲ",  # Indirect
-        "ဆိုင် ဘယ်မှာလဲ?",  # Address
-        "နေရာ ပြောပေးပါ",  # Location
+        "ဖုန်းနံပါတ် ဘယ်လောက်လဲ?",
+        "ဆိုင် ဘယ်မှာလဲ?",
 
-        # Products - Different phrasings
-        "ဖုန်း ဘယ်လိုမျိုးတွေ ရှိလဲ?",  # Brand list
-        "Samsung ဘာတွေ ရရှိနိုင်လဲ?",  # Model list
-        "ငါးသိန်းနဲ့ ဝယ်လို့ရမလား?",  # Price filter
-        "ကင်မရာ အရမ်းကောင်းတဲ့ ဖုန်း",  # Spec search
+        # Technical Support
+        "ဖုန်း wifi မတက်ဘူး",
+        "how to transfer data to new phone",
+
+        # Products
+        "8GB RAM နဲ့ ဘာတွေရှိလဲ?",
+        "256GB storage ဖုန်းတွေ",
+        "black color ရှိလား?",
+        "camera အရမ်းကောင်းတဲ့ ဖုန်း",
     ]
 
     print("Testing Hybrid Intent Classifier:\n")
@@ -565,6 +630,9 @@ if __name__ == "__main__":
         intent, confidence = classifier.classify(query)
         print(f"Query: {query}")
         print(f"→ Intent: {intent.value} (confidence: {confidence:.2f})")
+        print(f"→ DB needed: {is_database_intent(intent)}")
+        print(f"→ Policy needed: {is_policy_intent(intent)}")
+        print(f"→ Tech support: {is_technical_support_intent(intent)}")
         print("-" * 60)
 
     print("\nClassification Stats:")

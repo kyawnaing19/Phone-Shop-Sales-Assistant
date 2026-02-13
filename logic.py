@@ -1,21 +1,19 @@
 """
 ╔══════════════════════════════════════════════════════════════════════════╗
-║           ULTIMATE RAG SYSTEM - v5.0 FINAL                               ║
-║           Advanced Techniques + Complete Outputs                         ║
+║           ULTIMATE RAG SYSTEM - v6.0 REFACTORED                         ║
+║           Enhanced with RAM/Storage/Color + Strict Data Boundaries      ║
 ║                                                                          ║
-║  COMBINES:                                                               ║
-║  ✓ Hybrid Retrieval (SQL + Vector Fusion)                              ║
-║  ✓ Intent-Aware Processing                                              ║
-║  ✓ Multi-Level Caching (TTL + Memory)                                   ║
-║  ✓ Query Decomposition                                                  ║
-║  ✓ Context Compression                                                  ║
+║  NEW FEATURES:                                                           ║
+║  ✓ RAM/Storage search support                                          ║
+║  ✓ Color search support                                                 ║
+║  ✓ Technical support intent (LLM knowledge allowed)                    ║
+║  ✓ STRICT data source boundaries (no hallucination)                    ║
 ║                                                                          ║
-║  WITH PERFECT OUTPUTS:                                                   ║
-║  ✓ Show ALL brands when asked                                           ║
-║  ✓ Show ALL models when asked                                           ║
-║  ✓ Complete price filtering with brand diversity                        ║
-║  ✓ Complex queries with comprehensive data                              ║
-║  ✓ NO unnecessary explanations - just complete facts                    ║
+║  DATA SOURCE RULES:                                                      ║
+║  • Product queries → Database ONLY                                      ║
+║  • CRM questions → shop_policies.py ONLY                               ║
+║  • Technical support → LLM general knowledge OK                        ║
+║  • Clear attribution when data not available                           ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 """
 
@@ -42,6 +40,16 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
 
+# Import the NEW enhanced classifier
+from advanced_intent_classifier import (
+    HybridIntentClassifier,
+    Intent,
+    llm_classify_intent,
+    is_database_intent,
+    is_policy_intent,
+    is_technical_support_intent
+)
+
 from shop_policies import get_policy, detect_policy_category, SHOP_INFO, POLICIES_AVAILABLE
 
 # Fuzzy matching
@@ -58,7 +66,7 @@ load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format='''%(asctime)s - %(levelname)s - %(message)s''',
     force=True
 )
 logger = logging.getLogger(__name__)
@@ -98,34 +106,8 @@ class Config:
     ENABLE_COMPRESSION = True
 
 
-
 # ═══════════════════════════════════════════════════════════════════════════
-# INTENT TAXONOMY
-# ═══════════════════════════════════════════════════════════════════════════
-
-class Intent(str, Enum):
-    """Intent types"""
-    # No DB needed
-    GREETING = "greeting"
-    CASUAL = "casual"
-    CRM_QUESTION = "crm_question"
-
-    # DB needed - SHOW ALL policy
-    BRAND_LIST = "brand_list"
-    MODEL_LIST = "model_list"
-    PRICE_FILTER = "price_filter"
-    SPEC_SEARCH = "spec_search"
-    COMPARISON = "comparison"
-    RECOMMENDATION = "recommendation"
-    STOCK_CHECK = "stock_check"
-
-    # Follow-up
-    FOLLOWUP = "followup"
-    UNKNOWN = "unknown"
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# DATABASE - COMPLETE DATA RETRIEVAL
+# DATABASE - COMPLETE DATA RETRIEVAL WITH NEW FIELDS
 # ═══════════════════════════════════════════════════════════════════════════
 
 @contextmanager
@@ -149,7 +131,7 @@ def get_all_brands() -> List[str]:
 
 
 def get_all_products() -> List[Dict]:
-    """Get ALL products"""
+    """Get ALL products with new fields"""
     with get_db_connection() as conn:
         cursor = conn.execute("""
             SELECT brand, model, price, quantity, specifications, best_for, ram_storage, color 
@@ -180,9 +162,11 @@ def filter_products(
     models: List[str] = None,
     price_min: int = None,
     price_max: int = None,
-    spec_keyword: str = None
+    spec_keyword: str = None,
+    ram_storage: str = None,  # NEW
+    color: str = None  # NEW
 ) -> List[Dict]:
-    """Filter products with multiple criteria"""
+    """Filter products with multiple criteria including RAM/storage and color"""
     with get_db_connection() as conn:
         query = """
             SELECT brand, model, price, quantity, specifications, best_for, ram_storage, color 
@@ -214,6 +198,16 @@ def filter_products(
             pattern = f"%{spec_keyword.lower()}%"
             params.extend([pattern, pattern])
 
+        # NEW: RAM/Storage filtering
+        if ram_storage:
+            query += " AND LOWER(ram_storage) LIKE ?"
+            params.append(f"%{ram_storage.lower()}%")
+
+        # NEW: Color filtering
+        if color:
+            query += " AND LOWER(color) LIKE ?"
+            params.append(f"%{color.lower()}%")
+
         query += " ORDER BY brand, price ASC"
 
         cursor = conn.execute(query, params)
@@ -224,11 +218,11 @@ def filter_products(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# ENTITY EXTRACTION - ADVANCED
+# ENTITY EXTRACTION - ENHANCED WITH RAM/STORAGE AND COLOR
 # ═══════════════════════════════════════════════════════════════════════════
 
 class EntityExtractor:
-    """Multi-strategy entity extraction"""
+    """Multi-strategy entity extraction with RAM/storage and color support"""
 
     def __init__(self):
         self._brands_cache = None
@@ -243,163 +237,165 @@ class EntityExtractor:
     @property
     def models(self) -> List[str]:
         if self._models_cache is None:
-            with get_db_connection() as conn:
-                cursor = conn.execute("SELECT DISTINCT LOWER(model) FROM products")
-                self._models_cache = sorted([row[0] for row in cursor.fetchall()],
-                                          key=len, reverse=True)
+            products = get_all_products()
+            self._models_cache = [f"{p['brand']} {p['model']}" for p in products]
         return self._models_cache
 
-    def extract(self, text: str) -> Tuple[List[str], List[str], float]:
-        """Extract brands and models"""
+    def extract_ram_storage(self, text: str) -> Optional[str]:
+        """Extract RAM/storage specifications from text
+
+        Examples:
+        - "8GB RAM" -> "8GB"
+        - "256GB storage" -> "256GB"
+        - "8/256" -> "8/256"
+        - "12GB RAM 512GB" -> "12GB"
+        """
         text_lower = text.lower()
-        brands_found = []
-        models_found = []
-        confidence = 0.0
 
-        # Regex matching
-        for brand in self.brands:
-            if re.search(r'\b' + re.escape(brand.lower()) + r'\b', text_lower):
-                brands_found.append(brand)
-                confidence = 1.0
+        # Pattern 1: Direct GB/TB mentions with RAM/ROM keywords
+        patterns = [
+            r'(\d+\s*(?:gb|tb))[\s/]*(?:ram|ရမ်|memory)',
+            r'(?:ram|ရမ်|memory)[\s/]*(\d+\s*(?:gb|tb))',
+            r'(\d+\s*(?:gb|tb))[\s/]*(?:storage|rom|ရုမ်|internal)',
+            r'(?:storage|rom|ရုမ်|internal)[\s/]*(\d+\s*(?:gb|tb))',
+            r'(\d+)[\s/]*(?:gb|ဂျီဘီ)',  # Myanmar
+        ]
 
-        for model in self.models:
-            if re.search(r'\b' + re.escape(model) + r'\b', text_lower):
-                models_found.append(model)
-                confidence = 1.0
+        for pattern in patterns:
+            match = re.search(pattern, text_lower)
+            if match:
+                spec = match.group(1).strip()
+                # Normalize spacing
+                spec = re.sub(r'\s+', '', spec)
+                return spec
 
-        # Fuzzy matching if no exact match
-        if Config.ENABLE_FUZZY and not (brands_found or models_found) and FUZZY_AVAILABLE:
+        return None
+
+    def extract_color(self, text: str) -> Optional[str]:
+        """Extract color from text
+
+        Examples:
+        - "black phone" -> "black"
+        - "အနီရောင်" -> "red"
+        """
+        text_lower = text.lower()
+
+        # English colors
+        english_colors = {
+            'black': 'black',
+            'white': 'white',
+            'blue': 'blue',
+            'red': 'red',
+            'green': 'green',
+            'gold': 'gold',
+            'silver': 'silver',
+            'pink': 'pink',
+            'purple': 'purple',
+            'gray': 'gray',
+            'grey': 'gray',
+            'yellow': 'yellow',
+            'orange': 'orange',
+        }
+
+        # Myanmar colors
+        myanmar_colors = {
+            'နက်': 'black',
+            'အဖြူ': 'white',
+            'အပြာ': 'blue',
+            'အနီ': 'red',
+            'အစိမ်း': 'green',
+            'ရွှေ': 'gold',
+            'ငွေ': 'silver',
+            'ပန်း': 'pink',
+            'ခရမ်း': 'purple',
+        }
+
+        # Check English colors
+        for color_word, color_name in english_colors.items():
+            if re.search(rf'{color_word}', text_lower):
+                return color_name
+
+        # Check Myanmar colors
+        for color_word, color_name in myanmar_colors.items():
+            if color_word in text:
+                return color_name
+
+        return None
+
+    def extract(self, text: str) -> Tuple[List[str], List[str], float]:
+        """Extract brands and models with confidence score"""
+        brands = []
+        models = []
+
+        # Try fuzzy matching if available
+        if Config.ENABLE_FUZZY and FUZZY_AVAILABLE:
+            # Brand matching
             brand_matches = process.extract(
-                text_lower, self.brands,
-                scorer=fuzz.token_set_ratio,
-                limit=2,
-                score_cutoff=Config.FUZZY_THRESHOLD
+                text,
+                self.brands,
+                scorer=fuzz.partial_ratio,
+                limit=3
             )
-            if brand_matches:
-                brands_found = [m[0] for m in brand_matches]
-                confidence = brand_matches[0][1] / 100.0
+            brands = [m[0] for m in brand_matches if m[1] >= Config.FUZZY_THRESHOLD]
 
+            # Model matching
             model_matches = process.extract(
-                text_lower, self.models,
+                text,
+                self.models,
                 scorer=fuzz.token_set_ratio,
-                limit=2,
-                score_cutoff=Config.FUZZY_THRESHOLD - 5
+                limit=5
             )
-            if model_matches:
-                models_found = [m[0] for m in model_matches]
-                confidence = max(confidence, model_matches[0][1] / 100.0)
+            models = [m[0] for m in model_matches if m[1] >= Config.FUZZY_THRESHOLD]
 
-        return list(set(brands_found)), list(set(models_found)), confidence
+        # Fallback to simple matching
+        if not brands and not models:
+            text_lower = text.lower()
+            brands = [b for b in self.brands if b.lower() in text_lower]
+            models = [m for m in self.models if m.lower() in text_lower]
+
+        confidence = 1.0 if (brands or models) else 0.0
+
+        return brands, models, confidence
 
 
 entity_extractor = EntityExtractor()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# PRICE PARSING
-# ═══════════════════════════════════════════════════════════════════════════
-
-import re
-import logging
-from typing import Tuple, Optional
-
-# Setup logger (သင့် code ထဲမှာ ရှိပြီးသားဖြစ်နိုင်ပါတယ်)
-logger = logging.getLogger(__name__)
-
-
 def parse_price_range(text: str) -> Tuple[Optional[int], Optional[int]]:
-    """
-    Parse Myanmar price expressions with support for:
-    - Myanmar Digits (သိန်း၂၀, ၂၀သိန်း)
-    - English Digits (သိန်း 20, 20 သိန်း)
-    - Myanmar Number Words (သိန်းနှစ်ဆယ်, နှစ်ဆယ်သိန်း)
-    - Directional Keywords (အောက်, အထက်, ကျော်, မကျော်)
-    """
+    """Parse price range from text"""
     text_lower = text.lower()
 
-    # ၁။ မြန်မာဂဏန်းမှ အင်္ဂလိပ်ဂဏန်းသို့ ပြောင်းရန် Table
-    mm_digits = str.maketrans('၀၁၂၃၄၅၆၇၈၉', '0123456789')
+    # Pattern: "under X lakh" or "X သိန်းအောက်"
+    under_match = re.search(r'(under|below|less\s+than|အောက်).*?(\d+)[\s]*(lakh|သိန်း)', text_lower)
+    if under_match:
+        amount = int(under_match.group(2))
+        return None, amount * 100000
 
-    # ၂။ မြန်မာစာသား ကိန်းဂဏန်းများ
-    mm_nums = {
-        'တစ်': 1, 'နှစ်': 2, 'သုံး': 3, 'လေး': 4, 'ငါး': 5,
-        'ခြောက်': 6, 'ခုနစ်': 7, 'ရှစ်': 8, 'ကိုး': 9, 'ဆယ်': 10
-    }
+    # Pattern: "X to Y lakh" or "X မှ Y သိန်း"
+    range_match = re.search(r'(\d+)[\s]*(to|မှ|-)[\s]*(\d+)[\s]*(lakh|သိန်း)', text_lower)
+    if range_match:
+        min_amt = int(range_match.group(1))
+        max_amt = int(range_match.group(3))
+        return min_amt * 100000, max_amt * 100000
 
-    price_min = None
-    price_max = None
+    # Pattern: "X lakh"
+    exact_match = re.search(r'(\d+)[\s]*(lakh|သိန်း)', text_lower)
+    if exact_match:
+        amount = int(exact_match.group(1))
+        # Assume "around X lakh" means X-20% to X+20%
+        center = amount * 100000
+        return int(center * 0.8), int(center * 1.2)
 
-    # 'သိန်း' ပါဝင်မှသာ ရှာဖွေမည်
-    if 'သိန်း' in text_lower:
-        value = 0
-
-        # က။ ဂဏန်းပါမပါ အရင်စစ်မည် (ဥပမာ- သိန်း၂၀ သို့မဟုတ် ၂၀သိန်း)
-        # Regex: သိန်း အရှေ့ သို့မဟုတ် အနောက်တွင် ကပ်လျက်ရှိသော ဂဏန်းကို ရှာသည်
-        digit_match = re.search(r'သိန်း\s*([၀-၉\d]+)|([၀-၉\d]+)\s*သိန်း', text_lower)
-
-        if digit_match:
-            # Match ဖြစ်သော group (၁ သို့မဟုတ် ၂) ကိုယူပြီး အင်္ဂလိပ်ဂဏန်းပြောင်းမည်
-            val_str = (digit_match.group(1) or digit_match.group(2)).translate(mm_digits)
-            value = int(val_str) * 100000
-        else:
-            # ခ။ စာသား (Text) ဖြင့်လာသော ဈေးနှုန်းများကို တွက်ချက်မည် (ဥပမာ- နှစ်ဆယ်သိန်း)
-            temp_val = 0
-            # စာသားများကို တစ်လုံးချင်းစစ်ပြီး ပေါင်းစပ်မည်
-            for word, num in mm_nums.items():
-                if word in text_lower:
-                    if word == 'ဆယ်':
-                        # 'နှစ်ဆယ်' ဆိုလျှင် ၂ x ၁၀ ဖြစ်အောင် လုပ်ပေးသည်
-                        temp_val = (temp_val * 10) if temp_val > 0 else 10
-                    else:
-                        temp_val = num
-
-            # ဘာစာသားမှ ရှာမတွေ့လျှင် Default ၁ သိန်း သတ်မှတ်မည်
-            value = temp_val * 100000 if temp_val > 0 else 100000
-
-        # ၃။ Direction Logic (Range, Max သို့မဟုတ် Min သတ်မှတ်ခြင်း)
-        # ဈေးနှုန်း အနိမ့်/အမြင့် ခွဲခြားရန် Keyword များ
-        is_under = any(w in text_lower for w in ['အောက်', 'under', 'below', 'less', 'နဲ့ရ', 'နဲ့ဝယ်', 'မကျော်'])
-        is_above = any(w in text_lower for w in ['အထက်', 'above', 'over', 'more', 'ကျော်'])
-        is_between = any(w in text_lower for w in ['between', 'to', 'မှ', 'နဲ့'])
-
-        if is_under:
-            price_max = value
-        elif is_above:
-            price_min = value
-        elif is_between:
-            # Range ရှာရန် logic (ဥပမာ- ၁၀ သိန်း နဲ့ ၂၀ သိန်းကြား)
-            numbers = re.findall(r'([၀-၉\d]+)', text_lower)
-            if len(numbers) >= 2:
-                n1 = int(numbers[0].translate(mm_digits)) * 100000
-                n2 = int(numbers[1].translate(mm_digits)) * 100000
-                price_min, price_max = min(n1, n2), max(n1, n2)
-            else:
-                price_max = value
-        else:
-            # Default အနေဖြင့် Max ဟု ယူဆမည်
-            price_max = value
-
-    logger.info(f"💰 Parsed Price: min={price_min}, max={price_max}")
-    return price_min, price_max
+    return None, None
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# FAST INTENT CLASSIFIER
-# ═══════════════════════════════════════════════════════════════════════════
-
-# Import the advanced classifier
-from advanced_intent_classifier import HybridIntentClassifier, llm_classify_intent
-
-# Create global classifier instance
-hybrid_classifier = HybridIntentClassifier()
-
-# ═══════════════════════════════════════════════════════════════════════════
-# LLM QUERY UNDERSTANDING
+# QUERY UNDERSTANDING WITH NEW FIELDS
 # ═══════════════════════════════════════════════════════════════════════════
 
 @dataclass
 class QueryUnderstanding:
-    """Complete query understanding"""
+    """Complete query understanding with RAM/storage and color"""
     intent: Intent
     standalone_query: str
     brands: List[str] = field(default_factory=list)
@@ -407,11 +403,13 @@ class QueryUnderstanding:
     price_min: Optional[int] = None
     price_max: Optional[int] = None
     spec_keyword: Optional[str] = None
+    ram_storage: Optional[str] = None  # NEW
+    color: Optional[str] = None  # NEW
     confidence: float = 0.0
 
 
 def llm_understand_query(message: str, history: List[Dict], llm, fast_intent: Intent) -> QueryUnderstanding:
-    """Deep query understanding with LLM"""
+    """Deep query understanding with LLM - enhanced for RAM/storage and color"""
 
     history_str = ""
     if history:
@@ -429,12 +427,14 @@ Query: {message}
 Return JSON:
 {{
   "standalone_query": "Rewritten standalone query in Myanmar",
-  "intent": "brand_list|model_list|price_filter|spec_search|comparison|recommendation|stock_check|followup|unknown",
+  "intent": "brand_list|model_list|price_filter|spec_search|ram_storage_search|color_search|comparison|recommendation|stock_check|technical_support|followup|unknown",
   "brands": ["brand1", "brand2"],
   "models": ["model1"],
   "price_min": null or number,
   "price_max": null or number,
   "spec_keyword": "camera" or "battery" or "gaming" or null,
+  "ram_storage": "8GB" or "256GB" or "8/256" or null,
+  "color": "black" or "white" or "blue" or null,
   "confidence": 0.0 to 1.0
 }}
 
@@ -442,6 +442,9 @@ RULES:
 - brand_list: User wants ALL brands available
 - model_list: User wants ALL models of a specific brand
 - price_filter: Extract budget constraints
+- ram_storage_search: Extract RAM/storage specs (e.g., "8GB RAM", "256GB storage")
+- color_search: Extract color preference
+- technical_support: Phone usage help, troubleshooting (NOT product info)
 - For followup: Resolve references from history
 - standalone_query MUST be Myanmar language
 
@@ -461,6 +464,8 @@ Return ONLY JSON:"""
             price_min=result.get("price_min"),
             price_max=result.get("price_max"),
             spec_keyword=result.get("spec_keyword"),
+            ram_storage=result.get("ram_storage"),  # NEW
+            color=result.get("color"),  # NEW
             confidence=result.get("confidence", 0.5)
         )
 
@@ -491,7 +496,7 @@ def get_vector_store():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# FORMATTING - COMPLETE DATA PRESENTATION
+# FORMATTING - WITH NEW FIELDS
 # ═══════════════════════════════════════════════════════════════════════════
 
 def format_price(price: int) -> str:
@@ -513,45 +518,58 @@ def format_price(price: int) -> str:
 
 
 def format_product_full(p: Dict) -> str:
-    """Full product formatting"""
+    """Full product formatting with RAM/storage and color"""
+    ram_storage_info = p.get('ram_storage', 'N/A')
+    color_info = p.get('color', 'N/A')
+
     return f"""📱 {p['brand']} {p['model']}
    💰 ဈေး: {format_price(p['price'])}
    📦 လက်ကျန်: {p['quantity']} လုံး
+   💾 RAM/Storage: {ram_storage_info}
+   🎨 အရောင်: {color_info}
    ⚙️ အချက်အလက်: {p['specifications']}
-   ⚙️ Ram/Rom: {p['ram_storage']}
-   ⚙️ Available Color: {p['color']}
    ✨ သင့်လျော်: {p['best_for']}"""
 
 
 def format_product_compact(p: Dict) -> str:
     """Compact product formatting"""
     stock = "✅ ရှိ" if p['quantity'] > 0 else "❌ ကုန်"
-    return f"📱 {p['brand']} {p['model']} - {format_price(p['price'])} ({stock})"
+    ram_storage = p.get('ram_storage', '')
+    ram_info = f" [{ram_storage}]" if ram_storage and ram_storage != 'N/A' else ""
+    return f"📱 {p['brand']} {p['model']}{ram_info} - {format_price(p['price'])} ({stock})"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# CONTEXT BUILDER - COMPLETE + HYBRID
+# CONTEXT BUILDER - WITH STRICT DATA BOUNDARIES
 # ═══════════════════════════════════════════════════════════════════════════
 
 def build_context_complete(understanding: QueryUnderstanding) -> str:
-    """Build complete context based on intent"""
+    """Build complete context based on intent with STRICT data boundaries"""
 
     intent = understanding.intent
 
     # ========================================
-    # CRM QUESTION - Load shop policies (FIRST!)
+    # CRM QUESTION - ONLY shop policies
     # ========================================
     if intent == Intent.CRM_QUESTION:
         if POLICIES_AVAILABLE:
-            # Detect which policy is needed
             category = detect_policy_category(understanding.standalone_query)
             policy_text = get_policy(category)
-
             logger.info(f"📋 CRM Policy: {category}")
             return policy_text
         else:
-            # Fallback if policies file not available
             return "CRM အကြောင်း အထွေထွေ အချက်အလက်များကို ဖြေကြားပေးပါ။"
+
+    # ========================================
+    # TECHNICAL SUPPORT - Can use LLM knowledge
+    # ========================================
+    if intent == Intent.TECHNICAL_SUPPORT:
+        # Return minimal context - LLM can use general knowledge
+        return f"""# Technical Support Request:
+User needs help with: {understanding.standalone_query}
+
+You may use general knowledge about phone usage, settings, and troubleshooting.
+This is NOT a product query - you can provide general technical guidance."""
 
     # ========================================
     # GREETING / CASUAL - No context
@@ -559,15 +577,13 @@ def build_context_complete(understanding: QueryUnderstanding) -> str:
     if intent in [Intent.GREETING, Intent.CASUAL]:
         return ""
 
-
     # ========================================
-    # BRAND LIST - Show ALL brands
+    # BRAND LIST - Show ALL brands (DATABASE ONLY)
     # ========================================
     if intent == Intent.BRAND_LIST:
         brands = get_all_brands()
         products = get_all_products()
 
-        # Summarize by brand
         brand_info = {}
         for p in products:
             b = p['brand']
@@ -577,7 +593,7 @@ def build_context_complete(understanding: QueryUnderstanding) -> str:
             brand_info[b]['min'] = min(brand_info[b]['min'], p['price'])
             brand_info[b]['max'] = max(brand_info[b]['max'], p['price'])
 
-        context = "# ရရှိနိုင်သော Brand အားလုံး:\n\n"
+        context = "# ရရှိနိုင်သော Brand အားလုံး (DATABASE ONLY):\n\n"
         for b in sorted(brands):
             if b in brand_info:
                 info = brand_info[b]
@@ -585,10 +601,11 @@ def build_context_complete(understanding: QueryUnderstanding) -> str:
                 context += f"({format_price(info['min'])} - {format_price(info['max'])})\n"
 
         context += f"\n💡 စုစုပေါင်း: {len(products)} မော်ဒယ်\n"
+        context += "CRITICAL: Show ONLY these brands from database. DO NOT add any brands not listed here."
         return context
 
     # ========================================
-    # MODEL LIST - Show ALL models of brand
+    # MODEL LIST - Show ALL models (DATABASE ONLY)
     # ========================================
     if intent == Intent.MODEL_LIST:
         brand = understanding.brands[0] if understanding.brands else None
@@ -597,16 +614,17 @@ def build_context_complete(understanding: QueryUnderstanding) -> str:
 
         models = get_models_by_brand(brand)
         if not models:
-            return f"{brand.upper()} မော်ဒယ်များ မရှိပါ။"
+            return f"{brand.upper()} မော်ဒယ်များ DATABASE တွင် မရှိပါ။"
 
-        context = f"# {brand.upper()} မော်ဒယ် အားလုံး ({len(models)} မော်ဒယ်):\n\n"
+        context = f"# {brand.upper()} မော်ဒယ် အားလုံး ({len(models)} မော်ဒယ်) - DATABASE ONLY:"
         for m in models:
-            context += format_product_full(m) + "\n\n"
+            context += format_product_full(m) + ""
 
+        context += "⚠️ CRITICAL: Show ONLY these models from database. DO NOT add colors, specs, or models not listed."
         return context
 
     # ========================================
-    # PRICE FILTER - Show ALL in range
+    # PRICE FILTER (DATABASE ONLY)
     # ========================================
     if intent == Intent.PRICE_FILTER:
         products = filter_products(
@@ -616,9 +634,8 @@ def build_context_complete(understanding: QueryUnderstanding) -> str:
         )
 
         if not products:
-            return "ဒီဈေးနှုန်းအတွင်း ဖုန်း မရှိပါ။"
+            return "ဒီဈေးနှုန်းအတွင်း ဖုန်း DATABASE တွင် မရှိပါ။"
 
-        # Group by brand
         by_brand = defaultdict(list)
         for p in products:
             by_brand[p['brand']].append(p)
@@ -632,53 +649,110 @@ def build_context_complete(understanding: QueryUnderstanding) -> str:
             else:
                 price_str += f"{format_price(understanding.price_max)} အောက်"
 
-        context = f"# {price_str} ဖုန်းများ ({len(products)} မော်ဒယ်):\n\n"
-        context += f"💡 {len(by_brand)} Brand ရှိပါသည်\n\n"
+        context = f"# {price_str} ဖုန်းများ ({len(products)} မော်ဒယ်) - DATABASE ONLY:"
+        context += f"💡 {len(by_brand)} Brand ရှိပါသည်"
+
+        for brand in sorted(by_brand.keys()):
+            context += f"## {brand.upper()} ({len(by_brand[brand])} မော်ဒယ်):"
+            for p in by_brand[brand]:
+                context += format_product_compact(p) + ""
+            context += ""
+
+        context += "⚠️ CRITICAL: Show ONLY products within this price range from database."
+        return context
+
+    # ========================================
+    # RAM/STORAGE SEARCH (NEW - DATABASE ONLY)
+    # ========================================
+    if intent == Intent.RAM_STORAGE_SEARCH:
+        products = filter_products(
+            ram_storage=understanding.ram_storage
+        )
+
+        if not products:
+            ram_spec = understanding.ram_storage or "requested specification\n"
+            return f"{ram_spec} နဲ့ကိုက်ညီတဲ့ ဖုန်း DATABASE တွင် မရှိပါ။\n"
+
+        by_brand = defaultdict(list)
+        for p in products:
+            by_brand[p['brand']].append(p)
+
+        context = f"# {understanding.ram_storage} ပါသော ဖုန်းများ ({len(products)} မော်ဒယ်) - DATABASE ONLY:\n"
+        context += f"💡 {len(by_brand)} Brand ရှိပါသည်\n"
 
         for brand in sorted(by_brand.keys()):
             context += f"## {brand.upper()} ({len(by_brand[brand])} မော်ဒယ်):\n"
             for p in by_brand[brand]:
-                context += format_product_compact(p) + "\n"
-            context += "\n"
+                context += format_product_full(p) + ""
 
+        context += "⚠️ CRITICAL: Show ONLY phones with this RAM/storage from database.DO NOT invent specs or colors."
         return context
 
     # ========================================
-    # COMPARISON - Full specs
+    # COLOR SEARCH (NEW - DATABASE ONLY)
+    # ========================================
+    if intent == Intent.COLOR_SEARCH:
+        products = filter_products(
+            color=understanding.color
+        )
+
+        if not products:
+            color_name = understanding.color or "requested color"
+            return f"{color_name} အရောင် DATABASE တွင် မရှိပါ။"
+
+        by_brand = defaultdict(list)
+        for p in products:
+            by_brand[p['brand']].append(p)
+
+        context = f"# {understanding.color} အရောင် ဖုန်းများ ({len(products)} မော်ဒယ်) - DATABASE ONLY:"
+        context += f"💡 {len(by_brand)} Brand ရှိပါသည်"
+
+        for brand in sorted(by_brand.keys()):
+            context += f"## {brand.upper()} ({len(by_brand[brand])} မော်ဒယ်):"
+            for p in by_brand[brand]:
+                context += format_product_full(p) + ""
+
+        context += f"⚠️ CRITICAL: Show ONLY {understanding.color} phones from database. DO NOT suggest other colors."
+        return context
+
+    # ========================================
+    # COMPARISON (DATABASE ONLY)
     # ========================================
     if intent == Intent.COMPARISON:
         models = understanding.models
         products = filter_products(models=models)
 
         if len(products) < 2:
-            return "နှိုင်းယှဉ်ရန် မော်ဒယ် အနည်းဆုံး ၂ ခု လိုအပ်ပါသည်။"
+            return "နှိုင်းယှဉ်ရန် မော်ဒယ် အနည်းဆုံး ၂ ခု DATABASE တွင် လိုအပ်ပါသည်။"
 
-        context = "# နှိုင်းယှဉ်ချက်:\n\n"
+        context = "# နှိုင်းယှဉ်ချက် - DATABASE ONLY:"
         for p in products:
-            context += "=" * 60 + "\n"
-            context += format_product_full(p) + "\n\n"
+            context += "=" * 60 + ""
+            context += format_product_full(p) + ""
 
+        context += "⚠️ CRITICAL: Compare ONLY using specs from database. DO NOT add features not listed."
         return context
 
     # ========================================
-    # STOCK CHECK
+    # STOCK CHECK (DATABASE ONLY)
     # ========================================
     if intent == Intent.STOCK_CHECK:
         models = understanding.models
         products = filter_products(models=models)
 
         if not products:
-            return "မေးမြန်းထားသော မော်ဒယ် မရှိပါ။"
+            return "မေးမြန်းထားသော မော်ဒယ် DATABASE တွင် မရှိပါ။"
 
-        context = "# လက်ကျန် စစ်ဆေးချက်:\n\n"
+        context = "# လက်ကျန် စစ်ဆေးချက် - DATABASE ONLY:"
         for p in products:
             status = "✅ ရှိသည်" if p['quantity'] > 0 else "❌ ကုန်သည်"
-            context += f"📱 {p['brand']} {p['model']}: {status} ({p['quantity']} လုံး)\n"
+            context += f"📱 {p['brand']} {p['model']}: {status} ({p['quantity']} လုံး)"
 
+        context += "⚠️ CRITICAL: Report ONLY stock status from database. DO NOT guess availability.DO NOT invent specs or colors."
         return context
 
     # ========================================
-    # SPEC SEARCH / RECOMMENDATION - Hybrid
+    # SPEC SEARCH / RECOMMENDATION - Hybrid (DATABASE + VECTOR)
     # ========================================
     if intent in [Intent.SPEC_SEARCH, Intent.RECOMMENDATION]:
         # SQL filtering
@@ -686,7 +760,9 @@ def build_context_complete(understanding: QueryUnderstanding) -> str:
             brands=understanding.brands if understanding.brands else None,
             price_min=understanding.price_min,
             price_max=understanding.price_max,
-            spec_keyword=understanding.spec_keyword
+            spec_keyword=understanding.spec_keyword,
+            ram_storage=understanding.ram_storage,
+            color=understanding.color
         )
 
         # Vector search for semantic matching
@@ -707,29 +783,29 @@ def build_context_complete(understanding: QueryUnderstanding) -> str:
         context = ""
 
         if products:
-            # Group by brand for recommendations
             by_brand = defaultdict(list)
             for p in products:
                 by_brand[p['brand']].append(p)
 
             spec_str = understanding.spec_keyword or "သင့်လျော်သော"
-            context += f"# {spec_str.upper()} ဖုန်းများ ({len(products)} မော်ဒယ်):\n\n"
-            context += f"💡 {len(by_brand)} Brand ရှိပါသည်\n\n"
+            context += f"# {spec_str.upper()} ဖုန်းများ ({len(products)} မော်ဒယ်) - DATABASE ONLY:"
+            context += f"💡 {len(by_brand)} Brand ရှိပါသည်"
 
             # Show top 3 per brand for recommendations
             for brand in sorted(by_brand.keys()):
-                context += f"## {brand.upper()}:\n"
+                context += f"## {brand.upper()}:"
                 for p in by_brand[brand][:3]:
-                    context += format_product_full(p) + "\n\n"
+                    context += format_product_full(p) + ""
 
         if vector_docs:
-            context += "\n# အသေးစိတ် အချက်အလက်:\n"
+            context += "# အသေးစိတ် အချက်အလက် (from vector database):"
             for doc in vector_docs[:5]:
-                context += doc + "\n\n"
+                context += doc + ""
 
         if not context:
-            return "သင့်လျော်သော ဖုန်း မတွေ့ရှိပါ။"
+            return "သင့်လျော်သော ဖုန်း DATABASE တွင် မတွေ့ရှိပါ။"
 
+        context += "⚠️ CRITICAL: Recommend ONLY phones from database. DO NOT invent specs or colors."
         return context
 
     # ========================================
@@ -740,14 +816,14 @@ def build_context_complete(understanding: QueryUnderstanding) -> str:
         try:
             docs = vector_db.similarity_search(understanding.standalone_query, k=8)
             if docs:
-                context = "# သက်ဆိုင်သော အချက်အလက်:\n\n"
+                context = "# သက်ဆိုင်သော အချက်အလက် (from vector database):"
                 for doc in docs:
-                    context += doc.page_content + "\n\n"
+                    context += doc.page_content + ""
                 return context
         except:
             pass
 
-    return "အချက်အလက် မတွေ့ရှိပါ။"
+    return "အချက်အလက် DATABASE တွင် မတွေ့ရှိပါ။"
 
 
 def compress_context(context: str, max_tokens: int = 3000) -> str:
@@ -761,19 +837,19 @@ def compress_context(context: str, max_tokens: int = 3000) -> str:
 
     logger.info(f"🗜️  Compressing: {estimated_tokens:.0f} → {max_tokens} tokens")
     max_chars = max_tokens * 4
-    return context[:max_chars] + "\n\n... (အချက်အလက် အချို့ ဖြုတ်ထားသည်)"
-
-
+    return context[:max_chars] + "... (အချက်အလက် အချို့ ဖြုတ်ထားသည်)"
 # ═══════════════════════════════════════════════════════════════════════════
-# PROMPT BUILDER - OUTPUT FOCUSED
+# PROMPT BUILDER - WITH STRICT DATA SOURCE BOUNDARIES
 # ═══════════════════════════════════════════════════════════════════════════
 
 def build_prompt(understanding: QueryUnderstanding, context: str, user_info: str = "") -> str:
-    """Build prompt for perfect outputs"""
+    """Build prompt with STRICT data source boundaries"""
 
     personalization = f"\nစကားပြောနေသူ: {user_info}" if user_info else ""
 
-    # Greeting / Casual
+    # ========================================
+    # GREETING / CASUAL
+    # ========================================
     if understanding.intent == Intent.GREETING:
         return f"""သင်သည် မြန်မာဖုန်းဆိုင် အရောင်းဝန်ထမ်း ဖြစ်သည်။{personalization}
 
@@ -788,85 +864,161 @@ User: {understanding.standalone_query}
 
 ယဉ်ကျေးစွာ ဖြေကြားပါ။"""
 
-    # Find the CRM prompt section and update it:
-
+    # ========================================
+    # CRM QUESTION - ONLY shop policies
+    # ========================================
     if understanding.intent == Intent.CRM_QUESTION:
-        if context:  # We have shop policies
+        if context:
             return f"""သင်သည် {SHOP_INFO.get('name_myanmar', 'မြန်မာဖုန်းဆိုင်')} ၏ အရောင်းဝန်ထမ်း ဖြစ်သည်။{personalization}
 
-    User မေးခွန်း: {understanding.standalone_query}
+User မေးခွန်း: {understanding.standalone_query}
 
-    ဆိုင်မူဝါဒ:
-    {context}
+ဆိုင်မူဝါဒ:
+{context}
 
-    ⚠️ အရေးကြီး:
-    ✅မလိုအပ်သော စကားများ မပြောရ - အဖြေကို တိုက်ရိုက် ပြပေးပါ
-    ✅ Context ထဲ မပါတာကို မခန့်မှန်းရ
-    ✅ အထက်ပါ မူဝါဒအတိုင်း တိကျစွာ ဖြေကြားပါ
-    ✅ မူဝါဒ၌ မပါသော အရာများကို မဖြေရ
-    ✅ ဖုန်းနံပါတ်နှင့် လိပ်စာကို ပြည့်စုံစွာ ပေးပါ
+⚠️ CRITICAL DATA SOURCE RULES:
+✅ Use ONLY information from shop policies above
+✅ Answer directly and concisely
+✅ Include phone numbers and address in full
+❌ DO NOT guess information not in policies
+❌ DO NOT use general knowledge
+❌ DO NOT make up shop details
 
-    မြန်မာလို ရှင်းလင်းစွာ ဖြေကြားပေးပါ။"""
-        else:  # Generic CRM answer
+သင်သည် မူဝါဒ၌ရှိသော အချက်အလက်ကိုသာ အသုံးပြု၍ ဖြေကြားရမည်။
+မြန်မာလို ရှင်းလင်းစွာ ဖြေကြားပေးပါ။"""
+        else:
             return f"""သင်သည် မြန်မာဖုန်းဆိုင် အရောင်းဝန်ထမ်း ဖြစ်သည်။{personalization}
-            မလိုအပ်သော စကားများ မပြောရ - အဖြေကို တိုက်ရိုက် ပြပေးပါ
-            မြန်မာလို ရှင်းလင်းစွာ ဖြေကြားပါ။"""
 
-    # Data-driven intents
+User: {understanding.standalone_query}
+
+⚠️ CRITICAL: Shop policy information not available in database.
+Inform user that you don't have this information and suggest they contact the shop directly.
+
+မြန်မာလို ဖြေကြားပါ။"""
+
+    # ========================================
+    # TECHNICAL SUPPORT - Can use LLM general knowledge
+    # ========================================
+    if understanding.intent == Intent.TECHNICAL_SUPPORT:
+        return f"""သင်သည် မြန်မာဖုန်းဆိုင် အရောင်းဝန်ထမ်း ဖြစ်ပြီး ဖုန်းအသုံးပြုနည်းကို ကူညီပေးနိုင်သည်။{personalization}
+
+User မေးခွန်း: {understanding.standalone_query}
+
+{context}
+
+⚠️ SPECIAL RULES FOR TECHNICAL SUPPORT:
+✅ You MAY use general knowledge about phone usage and troubleshooting
+✅ Provide helpful technical guidance
+✅ Explain step-by-step instructions
+✅ This is NOT a product sales query
+❌ DO NOT recommend specific products unless asked
+❌ DO NOT make claims about products not in database
+
+သင်သည် ဖုန်းအသုံးပြုနည်းနှင့် ပြဿနာဖြေရှင်းခြင်းအတွက် အထွေထွေ အသိပညာကို အသုံးပြုနိုင်သည်။
+မြန်မာလို ကူညီပေးပါ။"""
+
+    # ========================================
+    # DATABASE-DRIVEN INTENTS - STRICT MODE
+    # ========================================
+
+    # Intent-specific instructions
     instructions = {
         Intent.BRAND_LIST: """
 🎯 လုပ်ဆောင်ချက်:
-- Context ထဲက Brand အားလုံးကို ပြပေးရမည်
-- တစ်ခုမကျန် ဖော်ပြရမည်
+- Context ထဲက Brand အားလုံးကို ပြပေးရမည် (တစ်ခုမကျန်)
 - မော်ဒယ်အရေအတွက်နှင့် ဈေးနှုန်းအပိုင်းအခြား ပြပါ
-- မေးခွန်းထဲတွင် Brands များကို လုံးဝ (လုံးဝ) ထပ်မဖြည့်ပါနှင့်။
-- Contexts ထဲမှာမပါတဲ့ color တွေမထည့်ပါနဲ့။ မရှိရင် မရှိဘူးလို့ဘဲဖြေပါ။""",
+❌ Context ထဲ မပါတဲ့ brand များကို လုံးဝ မထည့်ရ
+DO NOT invent specs or colors.""",
 
         Intent.MODEL_LIST: """
 🎯 လုပ်ဆောင်ချက်:
-- Context ထဲက မော်ဒယ် အားလုံးကို ပြပေးရမည် တစ်ခုမှ မဖြုတ်ချရ
-- Context ထဲ မပါတာကို မခန့်မှန်းရ
-- Contexts ထဲမှာမပါတဲ့ color တွေမထည့်ပါနဲ့။ မရှိရင် မရှိဘူးလို့ဘဲဖြေပါ။""",
+- Context ထဲက မော်ဒယ် အားလုံးကို ပြပေးရမည် (တစ်ခုမှ မဖြုတ်ချရ)
+- RAM/Storage and Price ပြပါ
+❌ Context ထဲ မပါတဲ့ specifications, colors ကို မထည့်ရ""",
 
         Intent.PRICE_FILTER: """
 🎯 လုပ်ဆောင်ချက်:
-- Context ထဲက ဈေးနှုန်းအတွင်း ဖုန်း အားလုံးကို ပြပေးရမည် တစ်ခုမှ မဖြုတ်ချရ
+- Context ထဲက ဈေးနှုန်းအတွင်း ဖုန်း အားလုံးကို ပြပေးရမည်
 - Brand အမျိုးမျိုး ပါရမည်
-- Brand တစ်ခုတည်းကို မပြရ""",
+- Brand, Model and Price ပြပါ
+❌ ဈေးနှုန်းအပြင်ဘက် မော်ဒယ်များ မပြရ""",
+
+        Intent.RAM_STORAGE_SEARCH: """
+🎯 လုပ်ဆောင်ချက်:
+- မေးထားသော RAM/Storage specification နှင့် ကိုက်ညီသော ဖုန်းများကိုသာ ပြရမည်(from context)
+- Brand, Model and Price ပြပါ
+- DO NOT invent specs or colors.
+❌ RAM/Storage မကိုက်ညီသော မော်ဒယ်များ မပြရ""",
+
+        Intent.COLOR_SEARCH: """
+🎯 လုပ်ဆောင်ချက်:
+- မေးထားသော အရောင်ရှိသော ဖုန်းများကိုသာ ပြရမည်
+- အခြား အရောင်များကို လုံးဝ အကြံပြုမပေးရ
+❌ Context ထဲ မပါတဲ့ အရောင်များ မပြရ
+- Brand, Model and Price ပြပါ
+""",
 
         Intent.COMPARISON: """
 🎯 လုပ်ဆောင်ချက်:
 - နှိုင်းယှဉ်ချက် အသေးစိတ် ပြပေးရမည်
-- အချက်အလက် အပြည့်အစုံ ပြရမည်
-- ဘယ်ဟာ ပိုကောင်းသည် ရှင်းပြပါ""",
+- Database မှ အချက်အလက် အပြည့်အစုံသာ အသုံးပြုရမည်
+❌ မရှိသော features များ မထည့်ရ""",
 
         Intent.RECOMMENDATION: """
 🎯 လုပ်ဆောင်ချက်:
 - Brand အမျိုးမျိုးမှ ရွေးချယ်စရာများ ပေးရမည်
 - အနည်းဆုံး ၃ ခု အကြံပြုပါ
-- အကြောင်းပြချက်နှင့် ရှင်းပြပါ""",
+- Database မှ အချက်အလက်များကိုသာ အခြေခံရမည်
+❌ Database တွင် မရှိသော မော်ဒယ်များ မအကြံပြုရ""",
+
+        Intent.SPEC_SEARCH: """
+🎯 လုပ်ဆောင်ချက်:
+- မေးထားသော specification နှင့် ကိုက်ညီသော ဖုန်းများကို ပြရမည်
+- Brand အမျိုးမျိုး ပါအောင် ပြပါ
+❌ Specification မကိုက်ညီသော မော်ဒယ်များ မပြရ""",
+
+        Intent.STOCK_CHECK: """
+🎯 လုပ်ဆောင်ချက်:
+- လက်ကျန် အခြေအနေကို တိကျစွာ ပြပါ
+- Database မှ အချက်အလက်များကိုသာ အသုံးပြုရမည်
+❌ လက်ကျန် အခြေအနေကို မခန့်မှန်းရ""",
     }
 
     instruction = instructions.get(understanding.intent, "")
 
+    # Build the final prompt with STRICT boundaries
     return f"""သင်သည် မြန်မာဖုန်းဆိုင် အရောင်းဝန်ထမ်း ဖြစ်သည်။{personalization}
 {instruction}
 
-⚠️ အရေးကြီးဆုံး စည်းကမ်းများ:
-✅စာကြောင်းများကို ထပ်ခါတလဲလဲ မပြောပါနှင့်။ မြန်မာဘာသာစကားသာသုံးပါ။ Thai, Korea, India, Chinese, Japanese and other ဘာသာစကားတွေ မသုံးပါနဲ့  
-✅စာလုံးပေါင်းသတ်ပုံမှန်ကန်အောင်သုံးပါ။
-✅ {context} ထဲက အချက်အလက် အတိုင်း အပြည့်အစုံ ပြပေးရမည်
-✅ တစ်ခုမှ ဖြုတ်ချမပြရ
-✅ Brand မျိုးစုံ ပါအောင် ပြပေးရမည်
-✅ မလိုအပ်သော စကားများ မပြောရ - အဖြေကို တိုက်ရိုက် ပြပေးပါ
-❌ Context ထဲ မပါတာကို မခန့်မှန်းရ
-❌ Contexts ထဲမှာမပါတဲ့ color တွေမထည့်ပါနဲ့။ မရှိရင် မရှိဘူးလို့ဘဲဖြေပါ။
+⚠️⚠️⚠️ CRITICAL DATA SOURCE RULES (MUST FOLLOW) ⚠️⚠️⚠️:
 
-Context:
+✅ DO (လုပ်ရမည့်အရာများ):
+1. Use ONLY information from the Context below
+2. Show ALL matching products from database (တစ်ခုမှ မဖြုတ်ချရ)
+3. Include ALL fields: price, RAM/storage, color, specs
+4. Use Myanmar language naturally
+5. If information not in database, clearly say "DATABASE တွင် မရှိပါ"
+
+❌ DO NOT (လုံးဝလုပ်မရသောအရာများ):
+1. DO NOT guess or hallucinate product information
+2. DO NOT add colors not in database
+3. DO NOT add specifications not in database  
+4. DO NOT add models or brands not in database
+5. DO NOT use general knowledge for product information
+6. DO NOT make up prices or availability
+7. DO NOT suggest alternatives not in database
+
+🚨 IF ASKED ABOUT INFORMATION NOT IN DATABASE:
+- Clearly state: "ဒီအချက်အလက်က ကျွန်တော်တို့ရဲ့ DATABASE တွင် မရှိပါဘူး"
+- DO NOT guess or make up information
+- Suggest contacting shop for more details
+
+Context (DATABASE အချက်အလက်များ):
 {context}
 
 User Question: {understanding.standalone_query}
 
+Remember: သင်သည် Database မှ အချက်အလက်များကိုသာ အသုံးပြု၍ ဖြေကြားရမည်။
 မြန်မာလို ယဉ်ကျေးစွာ ဖြေကြားပေးပါ။"""
 
 
@@ -921,6 +1073,7 @@ _memory = ConversationMemory()
 
 @dataclass
 class CacheEntry:
+    """Cache entry with timestamp"""
     value: str
     timestamp: float
 
@@ -1003,6 +1156,9 @@ class Metrics:
 
 _metrics = Metrics()
 
+# Initialize the hybrid classifier
+hybrid_classifier = HybridIntentClassifier()
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # MAIN ENTRY POINT
@@ -1010,7 +1166,12 @@ _metrics = Metrics()
 
 def get_final_prompt(message: str, history: list, llm, user_info: str = "") -> str:
     """
-    ULTIMATE system combining advanced RAG + complete outputs
+    ULTIMATE system with STRICT data source boundaries
+
+    Data Source Rules:
+    - Product queries → Database ONLY (no hallucination)
+    - CRM questions → shop_policies.py ONLY
+    - Technical support → LLM general knowledge OK
     """
 
     start_time = time.time()
@@ -1034,7 +1195,6 @@ def get_final_prompt(message: str, history: list, llm, user_info: str = "") -> s
         # ========================================
         # STEP 2: Fast Intent Classification
         # ========================================
-        # New way - with LLM fallback
         def use_llm_for_classification(msg):
             return llm_classify_intent(msg, llm)
 
@@ -1044,25 +1204,36 @@ def get_final_prompt(message: str, history: list, llm, user_info: str = "") -> s
             use_llm=use_llm_for_classification
         )
 
-        logger.info(f"Intent confidence: {confidence:.2f}")
+        logger.info(f"🎯 Intent: {fast_intent.value} (confidence: {confidence:.2f})")
+        logger.info(f"   - Database intent: {is_database_intent(fast_intent)}")
+        logger.info(f"   - Policy intent: {is_policy_intent(fast_intent)}")
+        logger.info(f"   - Tech support intent: {is_technical_support_intent(fast_intent)}")
 
-        # If confidence is too low, you can ask for clarification
+        # If confidence is too low, ask for clarification
         if confidence < 0.4:
             logger.warning(f"Low confidence classification: {fast_intent.value}")
 
         # ========================================
-        # STEP 3: Entity Extraction
+        # STEP 3: Entity Extraction (Enhanced)
         # ========================================
         brands, models, entity_conf = entity_extractor.extract(message)
         price_min, price_max = parse_price_range(message)
 
+        # NEW: Extract RAM/storage and color
+        ram_storage = entity_extractor.extract_ram_storage(message)
+        color = entity_extractor.extract_color(message)
+
         logger.info(f"🔍 Entities: brands={brands}, models={models}, conf={entity_conf:.2f}")
+        if ram_storage:
+            logger.info(f"💾 RAM/Storage: {ram_storage}")
+        if color:
+            logger.info(f"🎨 Color: {color}")
 
         # ========================================
         # STEP 4: Query Understanding
         # ========================================
         # Simple intents - skip LLM
-        if fast_intent in [Intent.GREETING, Intent.CASUAL, Intent.CRM_QUESTION]:
+        if fast_intent in [Intent.GREETING, Intent.CASUAL, Intent.CRM_QUESTION, Intent.TECHNICAL_SUPPORT]:
             understanding = QueryUnderstanding(
                 intent=fast_intent,
                 standalone_query=message,
@@ -1072,12 +1243,17 @@ def get_final_prompt(message: str, history: list, llm, user_info: str = "") -> s
         elif fast_intent == Intent.UNKNOWN or entity_conf < 0.5:
             used_llm = True
             understanding = llm_understand_query(message, history, llm, fast_intent)
+            # Merge extracted entities
             understanding.brands = list(set(understanding.brands + brands))
             understanding.models = list(set(understanding.models + models))
             if price_min:
                 understanding.price_min = price_min
             if price_max:
                 understanding.price_max = price_max
+            if ram_storage and not understanding.ram_storage:
+                understanding.ram_storage = ram_storage
+            if color and not understanding.color:
+                understanding.color = color
         # Use fast results
         else:
             understanding = QueryUnderstanding(
@@ -1087,6 +1263,8 @@ def get_final_prompt(message: str, history: list, llm, user_info: str = "") -> s
                 models=models,
                 price_min=price_min,
                 price_max=price_max,
+                ram_storage=ram_storage,
+                color=color,
                 confidence=entity_conf
             )
 
@@ -1114,7 +1292,7 @@ def get_final_prompt(message: str, history: list, llm, user_info: str = "") -> s
         _memory.update(understanding, context)
 
         # ========================================
-        # STEP 7: Build Prompt
+        # STEP 7: Build Prompt with STRICT boundaries
         # ========================================
         final_prompt = build_prompt(understanding, context, user_info)
 
