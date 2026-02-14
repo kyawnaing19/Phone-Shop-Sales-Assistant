@@ -1,0 +1,339 @@
+"""
+Response Validation Module
+Prevents LLM from hallucinating products not in database
+
+USAGE:
+    from response_validator import validate_response
+
+    is_valid, corrected_response = validate_response(
+        response=llm_response,
+        understanding=query_understanding,
+        all_products=database_products
+    )
+"""
+
+import re
+import logging
+from typing import List, Dict, Tuple
+from advanced_intent_classifier import Intent, is_database_intent
+
+logger = logging.getLogger(__name__)
+
+
+def validate_response(
+        response: str,
+        understanding,
+        all_products: List[Dict]
+) -> Tuple[bool, str]:
+    """
+    Validate that LLM response only uses database information
+
+    Args:
+        response: The LLM-generated response text
+        understanding: QueryUnderstanding object with intent
+        all_products: List of all products from database
+
+    Returns:
+        (is_valid: bool, corrected_response_or_original: str)
+            - If valid: (True, original_response)
+            - If invalid: (False, fallback_response)
+    """
+
+    # Skip validation for non-product intents
+    if not is_database_intent(understanding.intent):
+        logger.info("✅ Skipping validation (non-product intent)")
+        return True, response
+
+    logger.info("🔍 Validating response for database-only content...")
+
+    # Extract database entities
+    db_brands = set(p['brand'].lower() for p in all_products)
+    db_models_full = set(f"{p['brand'].lower()} {p['model'].lower()}" for p in all_products)
+    db_prices = [p['price'] for p in all_products]
+
+    response_lower = response.lower()
+    violations = []
+
+    # ========================================
+    # CHECK 1: External Brand Detection
+    # ========================================
+    # List of common phone brands that LLMs often hallucinate
+    external_brands = [
+        # iPhone variants
+        'iphone', 'iphone 15', 'iphone 14', 'iphone 13', 'iphone 12',
+        'iphone 15 pro', 'iphone 14 pro', 'iphone pro max',
+
+        # Google Pixel
+        'pixel', 'google pixel', 'pixel 8', 'pixel 7', 'pixel 6',
+        'pixel 8 pro', 'pixel 7 pro',
+
+        # OnePlus
+        'oneplus', 'one plus', 'oneplus 12', 'oneplus 11', 'oneplus 10',
+        'oneplus nord', 'oneplus open',
+
+        # Nothing
+        'nothing phone', 'nothing', 'nothing phone 2', 'nothing phone 1',
+
+        # Gaming phones
+        'rog phone', 'rog', 'asus rog', 'black shark', 'red magic',
+
+        # Chinese brands
+        'iqoo', 'iqoo neo', 'iqoo z', 'iqoo 12',
+
+        # Samsung flagship (often hallucinated with wrong specs)
+        'galaxy s24', 'galaxy s23', 'galaxy s22',
+        'galaxy s24 ultra', 'galaxy s23 ultra',
+        'galaxy z fold', 'galaxy z flip',
+
+        # Xiaomi flagship
+        'xiaomi 14', 'xiaomi 13', 'xiaomi 12',
+
+        # Redmi
+        'redmi note 13', 'redmi note 12', 'redmi k',
+
+        # Poco
+        'poco x6', 'poco f', 'poco m', 'poco c',
+
+        # Realme
+        'realme gt', 'realme 12', 'realme 11',
+
+        # Oppo
+        'find x7', 'find x6', 'find n', 'reno 11', 'reno 10',
+    ]
+
+    for ext_brand in external_brands:
+        if ext_brand in response_lower:
+            # Verify it's actually in our database
+            found = any(ext_brand in f"{p['brand'].lower()} {p['model'].lower()}"
+                        for p in all_products)
+            if not found:
+                violations.append(f"Mentioned '{ext_brand}' (NOT in database)")
+
+    # ========================================
+    # CHECK 2: Price Validation
+    # ========================================
+    # Extract mentioned prices using multiple patterns
+    price_patterns = [
+        r'(\d{3,7})\s*(?:kyat|mmk|ကျပ်)',  # "500000 MMK" or "500000 ကျပ်"
+        r'(\d{1,2})\s*(?:lakh|lakhs|သိန်း)',  # "5 lakhs" or "5 သိန်း"
+        r'(\d{3,7})\s*MMK',  # "500000 MMK"
+        r'MMK\s*(\d{3,7})',  # "MMK 500000"
+    ]
+
+    mentioned_prices = []
+    for pattern in price_patterns:
+        matches = re.findall(pattern, response_lower, re.IGNORECASE)
+        for match in matches:
+            try:
+                price_num = int(match)
+                # Convert lakhs to actual price if needed
+                if price_num < 100:  # Probably in lakhs (e.g., "5 lakhs")
+                    price_num *= 100000
+                mentioned_prices.append(price_num)
+            except:
+                continue
+
+    # Check if mentioned prices exist in database (with 10% tolerance)
+    for price in mentioned_prices:
+        found = any(abs(price - db_price) < db_price * 0.1 for db_price in db_prices)
+        if not found:
+            violations.append(f"Mentioned price {price:,} MMK (NOT in database)")
+
+    # ========================================
+    # CHECK 3: Specification Hallucinations
+    # ========================================
+    # Common specs that LLMs hallucinate from training data
+    spec_terms = [
+        ('snapdragon 8 gen 3', 'Snapdragon 8 Gen 3'),
+        ('snapdragon 8 gen 2', 'Snapdragon 8 Gen 2'),
+        ('dimensity 9300', 'Dimensity 9300'),
+        ('dimensity 9200', 'Dimensity 9200'),
+        ('a17 pro', 'A17 Pro chip'),
+        ('a16 bionic', 'A16 Bionic'),
+        ('200mp', '200MP camera'),
+        ('108mp', '108MP camera'),
+        ('periscope', 'Periscope lens'),
+        ('144hz', '144Hz display'),
+        ('165hz', '165Hz display'),
+        ('ltpo', 'LTPO display'),
+        ('5000mah', '5000mAh battery'),
+        ('6000mah', '6000mAh battery'),
+        ('120w', '120W fast charging'),
+        ('150w', '150W charging'),
+        ('ip68', 'IP68 rating'),
+        ('gorilla glass victus', 'Gorilla Glass Victus'),
+    ]
+
+    for spec_term, spec_name in spec_terms:
+        if spec_term in response_lower:
+            # Check if this spec exists in any product in database
+            found = any(spec_term in str(p.get('specifications', '')).lower()
+                        for p in all_products)
+            if not found:
+                violations.append(f"Mentioned '{spec_name}' (NOT in database specs)")
+
+    # ========================================
+    # CHECK 4: Model Number Patterns
+    # ========================================
+    # Detect specific model patterns that might be hallucinated
+    model_patterns = [
+        r'note\s*(\d{2})\s*(pro|ultra)?',  # "Note 12 Pro", "Note 13 Ultra"
+        r'(s|a|m)\s*(\d{2})\s*(ultra|plus)?',  # "S24 Ultra", "A54", "M33"
+        r'(iphone|pixel)\s*(\d{1,2})\s*(pro|max|ultra)?',  # "iPhone 15 Pro"
+    ]
+
+    for pattern in model_patterns:
+        matches = re.finditer(pattern, response_lower, re.IGNORECASE)
+        for match in matches:
+            model_mention = match.group(0)
+            found = any(model_mention.lower() in model_full for model_full in db_models_full)
+            if not found:
+                violations.append(f"Mentioned model '{model_mention}' (NOT in database)")
+
+    # ========================================
+    # DECISION: Valid or Invalid?
+    # ========================================
+    if violations:
+        logger.warning(f"❌ VALIDATION FAILED - {len(violations)} violations found:")
+        for v in violations:
+            logger.warning(f"   • {v}")
+
+        # Generate fallback response (Myanmar language)
+        fallback = f"""
+
+သင် စုံစမ်းလိုတဲ့ ဖုန်းနဲ့ ပတ်သက်ပြီး Shwee Shaung Mobile မှာ ရှိမရှိ စစ်ဆေးလိုပါက:
+
+📞 ဖုန်း: 09-671698821
+📞 အခြား: 09-4355737883
+📍 လိပ်စာ: Gwat, Thaton
+
+ဆိုင်မှာ ရှိတဲ့ ဖုန်းတွေကို အသေးစိတ် သိရှိလိုပါက တိုက်ရိုက် ဆက်သွယ်နိုင်ပါတယ်။"""
+
+        # Log violations for debugging
+        log_validation_result(
+            message=understanding.standalone_query,
+            response=response,
+            is_valid=False,
+            violations=violations
+        )
+
+        return False, fallback
+
+    logger.info("✅ Validation PASSED - Response uses database only")
+
+    # Log successful validation
+    log_validation_result(
+        message=understanding.standalone_query,
+        response=response,
+        is_valid=True,
+        violations=[]
+    )
+
+    return True, response
+
+
+def log_validation_result(
+        message: str,
+        response: str,
+        is_valid: bool,
+        violations: List[str] = None
+):
+    """
+    Log validation results for monitoring and debugging
+
+    Creates/appends to validation_log.jsonl for later analysis
+    """
+    import json
+    from datetime import datetime
+
+    log_entry = {
+        "timestamp": datetime.now().isoformat(),
+        "user_message": message,
+        "bot_response": response[:500],  # Truncate long responses
+        "validation_passed": is_valid,
+        "violations": violations or [],
+        "violation_count": len(violations) if violations else 0
+    }
+
+    # Append to log file (create if doesn't exist)
+    try:
+        with open("validation_log.jsonl", "a", encoding='utf-8') as f:
+            f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+    except Exception as e:
+        logger.error(f"Failed to write validation log: {e}")
+
+
+def get_validation_stats(log_file: str = "validation_log.jsonl") -> Dict:
+    """
+    Analyze validation log file and return statistics
+
+    Returns:
+        Dictionary with validation statistics
+    """
+    import json
+    from collections import defaultdict
+
+    if not os.path.exists(log_file):
+        return {"error": "No log file found"}
+
+    total = 0
+    passed = 0
+    failed = 0
+    violation_types = defaultdict(int)
+
+    with open(log_file, 'r', encoding='utf-8') as f:
+        for line in f:
+            try:
+                entry = json.loads(line)
+                total += 1
+
+                if entry['validation_passed']:
+                    passed += 1
+                else:
+                    failed += 1
+                    for v in entry.get('violations', []):
+                        # Extract violation type (first 30 chars)
+                        vtype = v[:30]
+                        violation_types[vtype] += 1
+            except:
+                continue
+
+    pass_rate = (passed / total * 100) if total > 0 else 0
+
+    return {
+        "total_validations": total,
+        "passed": passed,
+        "failed": failed,
+        "pass_rate": f"{pass_rate:.1f}%",
+        "most_common_violations": dict(sorted(
+            violation_types.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )[:5])
+    }
+
+
+# For imports
+import os
+
+if __name__ == "__main__":
+    # Test the validator
+    print("Response Validator Module")
+    print("=" * 60)
+
+    # Check if log exists
+    if os.path.exists("validation_log.jsonl"):
+        stats = get_validation_stats()
+        print("\nValidation Statistics:")
+        print(f"  Total: {stats['total_validations']}")
+        print(f"  Passed: {stats['passed']}")
+        print(f"  Failed: {stats['failed']}")
+        print(f"  Pass Rate: {stats['pass_rate']}")
+
+        if stats.get('most_common_violations'):
+            print("\n  Most Common Violations:")
+            for vtype, count in stats['most_common_violations'].items():
+                print(f"    • {vtype}: {count}x")
+    else:
+        print("\nNo validation log found yet.")
+        print("The log will be created when validation runs.")

@@ -55,6 +55,7 @@ from shop_policies import get_policy, detect_policy_category, SHOP_INFO, POLICIE
 # Fuzzy matching
 try:
     from rapidfuzz import fuzz, process
+
     FUZZY_AVAILABLE = True
 except ImportError:
     fuzz = None
@@ -158,13 +159,13 @@ def get_models_by_brand(brand: str) -> List[Dict]:
 
 
 def filter_products(
-    brands: List[str] = None,
-    models: List[str] = None,
-    price_min: int = None,
-    price_max: int = None,
-    spec_keyword: str = None,
-    ram_storage: str = None,  # NEW
-    color: str = None  # NEW
+        brands: List[str] = None,
+        models: List[str] = None,
+        price_min: int = None,
+        price_max: int = None,
+        spec_keyword: str = None,
+        ram_storage: str = None,  # NEW
+        color: str = None  # NEW
 ) -> List[Dict]:
     """Filter products with multiple criteria including RAM/storage and color"""
     with get_db_connection() as conn:
@@ -837,191 +838,250 @@ def compress_context(context: str, max_tokens: int = 22150) -> str:
     logger.info(f"🗜️  Compressing: {estimated_tokens:.0f} → {max_tokens} tokens")
     max_chars = max_tokens * 4
     return context[:max_chars] + "... (အချက်အလက် အချို့ ဖြုတ်ထားသည်)"
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # PROMPT BUILDER - WITH STRICT DATA SOURCE BOUNDARIES
 # ═══════════════════════════════════════════════════════════════════════════
 
+# REPLACE THIS FUNCTION IN logic.py (lines 844-1024)
+# This is the CRITICAL fix to prevent LLM hallucination
+
 def build_prompt(understanding: QueryUnderstanding, context: str, user_info: str = "") -> str:
-    """Build prompt with STRICT data source boundaries"""
+    """Build prompt with EXPLICIT product inventory to prevent hallucination"""
 
     personalization = f"\nစကားပြောနေသူ: {user_info}" if user_info else ""
 
     # ========================================
-    # GREETING / CASUAL
+    # GREETING / CASUAL - Keep as is
     # ========================================
     if understanding.intent == Intent.GREETING:
-        return f"""သင်သည် မြန်မာဖုန်းဆိုင် အရောင်းဝန်ထမ်း ဖြစ်သည်။{personalization}
+        return f"""သင်သည် Shwee Shaung Mobile ၏ အရောင်းဝန်ထမ်း ဖြစ်သည်။{personalization}
 
 User: {understanding.standalone_query}
 
 တိုတောင်း၍ ယဉ်ကျေးစွာ နှုတ်ဆက်ပါ။"""
 
     if understanding.intent == Intent.CASUAL:
-        return f"""သင်သည် မြန်မာဖုန်းဆိုင် အရောင်းဝန်ထမ်း ဖြစ်သည်။{personalization}
+        return f"""သင်သည် Shwee Shaung Mobile ၏ အရောင်းဝန်ထမ်း ဖြစ်သည်။{personalization}
 
 User: {understanding.standalone_query}
 
 ယဉ်ကျေးစွာ ဖြေကြားပါ။"""
 
     # ========================================
-    # CRM QUESTION - ONLY shop policies
+    # CRM QUESTION - Shop policies only
     # ========================================
     if understanding.intent == Intent.CRM_QUESTION:
         if context:
-            return f"""သင်သည် {SHOP_INFO.get('name_myanmar', 'မြန်မာဖုန်းဆိုင်')} ၏ အရောင်းဝန်ထမ်း ဖြစ်သည်။{personalization}
+            return f"""သင်သည် {SHOP_INFO.get('name_myanmar', 'Shwee Shaung Mobile')} ၏ အရောင်းဝန်ထမ်း ဖြစ်သည်။{personalization}
 
 User မေးခွန်း: {understanding.standalone_query}
 
 ဆိုင်မူဝါဒ:
 {context}
 
-⚠️ CRITICAL DATA SOURCE RULES:
-✅ Use ONLY information from shop policies above
-✅ Answer directly and concisely
-✅ Include phone numbers and address in full
-❌ DO NOT guess information not in policies
-❌ DO NOT use general knowledge
-❌ DO NOT make up shop details
+⚠️ CRITICAL: Use ONLY information from shop policies above.
+DO NOT use general knowledge. If not in policies, say you don't have that information.
 
-သင်သည် မူဝါဒ၌ရှိသော အချက်အလက်ကိုသာ အသုံးပြု၍ ဖြေကြားရမည်။
 မြန်မာလို ရှင်းလင်းစွာ ဖြေကြားပေးပါ။"""
         else:
-            return f"""သင်သည် မြန်မာဖုန်းဆိုင် အရောင်းဝန်ထမ်း ဖြစ်သည်။{personalization}
+            return f"""သင်သည် Shwee Shaung Mobile ၏ အရောင်းဝန်ထမ်း ဖြစ်သည်။{personalization}
 
 User: {understanding.standalone_query}
 
-⚠️ CRITICAL: Shop policy information not available in database.
-Inform user that you don't have this information and suggest they contact the shop directly.
-
-မြန်မာလို ဖြေကြားပါ။"""
+ဒီအချက်အလက်က database မှာ မရှိပါဘူး။ ဆိုင်ကို 09-671698821 သို့ ဆက်သွယ်နိုင်ပါတယ်။"""
 
     # ========================================
-    # TECHNICAL SUPPORT - Can use LLM general knowledge
+    # TECHNICAL SUPPORT - Can use general knowledge
     # ========================================
     if understanding.intent == Intent.TECHNICAL_SUPPORT:
-        return f"""သင်သည် မြန်မာဖုန်းဆိုင် အရောင်းဝန်ထမ်း ဖြစ်ပြီး ဖုန်းအသုံးပြုနည်းကို ကူညီပေးနိုင်သည်။{personalization}
+        return f"""သင်သည် Shwee Shaung Mobile ၏ အရောင်းဝန်ထမ်း ဖြစ်ပြီး ဖုန်းအသုံးပြုနည်းကို ကူညီပေးနိုင်သည်။{personalization}
 
 User မေးခွန်း: {understanding.standalone_query}
 
 {context}
 
-⚠️ SPECIAL RULES FOR TECHNICAL SUPPORT:
-✅ You MAY use general knowledge about phone usage and troubleshooting
-✅ Provide helpful technical guidance
-✅ Explain step-by-step instructions
-✅ This is NOT a product sales query
-❌ DO NOT recommend specific products unless asked
-❌ DO NOT make claims about products not in database
+✅ SPECIAL RULE: For technical support, you MAY use general phone knowledge
+✅ Provide helpful troubleshooting steps
+❌ DO NOT recommend specific phone models unless asked
 
-သင်သည် ဖုန်းအသုံးပြုနည်းနှင့် ပြဿနာဖြေရှင်းခြင်းအတွက် အထွေထွေ အသိပညာကို အသုံးပြုနိုင်သည်။
 မြန်မာလို ကူညီပေးပါ။"""
 
     # ========================================
-    # DATABASE-DRIVEN INTENTS - STRICT MODE
+    # DATABASE-DRIVEN INTENTS - THIS IS CRITICAL
     # ========================================
 
+    # Get ALL products from database to show LLM
+    all_products = get_all_products()
+
+    # BUILD EXPLICIT INVENTORY LIST
+    inventory_section = "=" * 70 + "\n"
+    inventory_section += "🏪 SHWEE SHAUNG MOBILE - COMPLETE INVENTORY\n"
+    inventory_section += "သင့်ဆိုင်တွင် ရှိသော ဖုန်းများ (ALL AVAILABLE PHONES IN DATABASE)\n"
+    inventory_section += "=" * 70 + "\n\n"
+
+    if all_products:
+        # Group by brand for clarity
+        from collections import defaultdict
+        by_brand = defaultdict(list)
+        for p in all_products:
+            by_brand[p['brand']].append(p)
+
+        for brand, products in sorted(by_brand.items()):
+            inventory_section += f"\n【{brand}】 - {len(products)} models\n"
+            inventory_section += "-" * 60 + "\n"
+
+            for p in sorted(products, key=lambda x: x['price']):
+                line = f"  • {p['model']} - {p['price']:,} MMK"
+
+                if p.get('ram_storage'):
+                    line += f" | RAM/Storage: {p['ram_storage']}"
+                if p.get('color'):
+                    line += f" | Color: {p['color']}"
+
+                inventory_section += line + "\n"
+
+        inventory_section += "\n" + "=" * 70 + "\n"
+        inventory_section += f"📊 TOTAL: {len(all_products)} products in database\n"
+        inventory_section += "=" * 70 + "\n\n"
+    else:
+        inventory_section += "⚠️ NO PRODUCTS IN DATABASE\n\n"
+
+    # STRICT RULES SECTION
+    strict_rules = """
+🚨🚨🚨 ABSOLUTE MANDATORY RULES - ZERO TOLERANCE 🚨🚨🚨
+
+【RULE 1: DATABASE-ONLY RESPONSES】
+✅ You can ONLY mention brands/models from the inventory list above
+✅ Every brand you mention MUST be in the inventory above
+✅ Every model you mention MUST be in the inventory above
+✅ Every price you mention MUST match the inventory above
+✅ Every color you mention MUST be in the inventory above
+❌ NEVER use your general knowledge about phones
+❌ NEVER mention brands not in inventory (e.g., if iPhone not in list, don't mention it)
+❌ NEVER invent specifications, colors, or prices
+❌ NEVER recommend phones not in the inventory above
+
+【RULE 2: IF NOT IN DATABASE】
+If user asks about a brand/model NOT in inventory above:
+→ Say: "Shwee Shaung Mobile မှာ [brand/model] မရှိပါဘူး"
+→ Suggest: "ဆိုင်တွင် ရှိတဲ့ အခြား ဖုန်းများကို ကြည့်ရှုနိုင်ပါတယ်"
+→ DO NOT provide any specs/info about that phone
+
+【RULE 3: VALIDATION CHECKLIST】
+Before sending your response, verify:
+□ Every brand I mentioned is in the inventory above? (YES/NO)
+□ Every model I mentioned is in the inventory above? (YES/NO)  
+□ Every price I mentioned matches inventory above? (YES/NO)
+□ I didn't use my training knowledge about phones? (YES/NO)
+
+If ANY answer is NO → Rewrite response using ONLY inventory above
+
+【RULE 4: RESPONSE FORMAT】
+✅ Use Myanmar language naturally
+✅ Use English for technical terms (camera, battery, charging, etc.)
+✅ Show exact prices from inventory (e.g., 459,000 MMK, not "around 5 lakhs")
+✅ Be helpful and friendly
+❌ Don't write unnecessary notes or disclaimers
+"""
+
     # Intent-specific instructions
-    instructions = {
+    intent_instructions = {
         Intent.BRAND_LIST: """
-🎯 လုပ်ဆောင်ချက်:
-- Context ထဲက Brand အားလုံးကို ပြပေးရမည် (တစ်ခုမကျန်)
-- မော်ဒယ်အရေအတွက်နှင့် ဈေးနှုန်းအပိုင်းအခြား ပြပါ
-❌ Context ထဲ မပါတဲ့ brand များကို လုံးဝ မထည့်ရ
-DO NOT invent specs or colors.""",
-
-        Intent.MODEL_LIST: """
-🎯 လုပ်ဆောင်ချက်:
-- Context ထဲက မော်ဒယ် အားလုံးကို ပြပေးရမည် (တစ်ခုမှ မဖြုတ်ချရ)
-- RAM/Storage and Price ပြပါ
-❌ Context ထဲ မပါတဲ့ specifications, colors ကို မထည့်ရ""",
-
-        Intent.PRICE_FILTER: """
-🎯 လုပ်ဆောင်ချက်:
-- Context ထဲက ဈေးနှုန်းအတွင်း ဖုန်း အားလုံးကို ပြပေးရမည်
-- Brand အမျိုးမျိုး ပါရမည်
-- Brand, Model and Price ပြပါ
-❌ ဈေးနှုန်းအပြင်ဘက် မော်ဒယ်များ မပြရ""",
-
-        Intent.RAM_STORAGE_SEARCH: """
-🎯 လုပ်ဆောင်ချက်:
-- မေးထားသော RAM/Storage specification နှင့် ကိုက်ညီသော ဖုန်းများကိုသာ ပြရမည်(from context)
-- Brand, Model and Price ပြပါ
-- DO NOT invent specs or colors.
-❌ RAM/Storage မကိုက်ညီသော မော်ဒယ်များ မပြရ""",
-
-        Intent.COLOR_SEARCH: """
-🎯 လုပ်ဆောင်ချက်:
-- မေးထားသော အရောင်ရှိသော ဖုန်းများကိုသာ ပြရမည်
-- အခြား အရောင်များကို လုံးဝ အကြံပြုမပေးရ
-❌ Context ထဲ မပါတဲ့ အရောင်များ မပြရ
-- Brand, Model and Price ပြပါ
+【USER WANTS】: List of all brands
+【YOUR TASK】:
+  - List ALL brands from inventory above (not from your memory)
+  - Show model count for each brand
+  - Show price range for each brand
+  - Example: "Samsung - 5 models (350,000 - 890,000 MMK)"
 """,
-
-        Intent.COMPARISON: """
-🎯 လုပ်ဆောင်ချက်:
-- နှိုင်းယှဉ်ချက် အသေးစိတ် ပြပေးရမည်
-- Database မှ အချက်အလက် အပြည့်အစုံသာ အသုံးပြုရမည်
-❌ မရှိသော features များ မထည့်ရ""",
-
+        Intent.MODEL_LIST: """
+【USER WANTS】: Models of a specific brand
+【YOUR TASK】:
+  - Show ALL models of that brand from inventory above
+  - Include price and RAM/Storage for each
+  - Sort by price (low to high)
+  - If brand not in inventory → say "Shwee Shaung Mobile မှာ [brand] မရှိပါဘူး"
+""",
+        Intent.PRICE_FILTER: """
+【USER WANTS】: Phones in a price range
+【YOUR TASK】:
+  - Show ALL phones in that price range from inventory above
+  - Include different brands if available
+  - Show exact prices from inventory
+  - Sort by price
+""",
+        Intent.RAM_STORAGE_SEARCH: """
+【USER WANTS】: Phones with specific RAM/Storage
+【YOUR TASK】:
+  - Show ONLY phones matching RAM/Storage from inventory above
+  - Include brand, model, exact price
+  - If no match → say "Shwee Shaung Mobile မှာ [spec] ပါတဲ့ ဖုန်း မရှိပါဘူး"
+""",
+        Intent.COLOR_SEARCH: """
+【USER WANTS】: Phones in specific color
+【YOUR TASK】:
+  - Show ONLY phones with that color from inventory above
+  - If color not in inventory → say "အဲဒီ အရောင် မရှိပါဘူး"
+  - Don't suggest colors not in inventory
+""",
         Intent.RECOMMENDATION: """
-🎯 လုပ်ဆောင်ချက်:
-- Brand အမျိုးမျိုးမှ ရွေးချယ်စရာများ ပေးရမည်
-- အနည်းဆုံး ၃ ခု အကြံပြုပါ
-❌ Database တွင် မရှိသော မော်ဒယ်များ မအကြံပြုရ""",
-
+【USER WANTS】: Phone recommendation
+【YOUR TASK】:
+  - Recommend 3-5 phones from inventory above
+  - Mix different brands if possible
+  - Explain why each is suitable based on inventory specs
+  - NEVER recommend phones not in inventory
+""",
+        Intent.COMPARISON: """
+【USER WANTS】: Compare phones
+【YOUR TASK】:
+  - Compare ONLY phones from inventory above
+  - Use actual specs from inventory
+  - If comparing phone not in inventory → say it's not available
+""",
         Intent.SPEC_SEARCH: """
-🎯 လုပ်ဆောင်ချက်:
-- မေးထားသော specification နှင့် ကိုက်ညီသော ဖုန်းများကို ပြရမည်
-- Brand အမျိုးမျိုး ပါအောင် ပြပါ
-- Database and context မှ အချက်အလက်များကိုသာ အသုံးပြုရမည်
--DO NOT invent price or colors.
-❌ Specification မကိုက်ညီသော မော်ဒယ်များ မပြရ""",
-
+【USER WANTS】: Phones with specific feature
+【YOUR TASK】:
+  - Show phones from inventory that match the feature
+  - Use specs from inventory only
+  - If no match → say feature not available in current stock
+""",
         Intent.STOCK_CHECK: """
-🎯 လုပ်ဆောင်ချက်:
-- လက်ကျန် အခြေအနေကို တိကျစွာ ပြပါ
-- Database မှ အချက်အလက်များကိုသာ အသုံးပြုရမည်
-❌ လက်ကျန် အခြေအနေကို မခန့်မှန်းရ""",
+【USER WANTS】: Check if phone available
+【YOUR TASK】:
+  - Check inventory above
+  - If found → show price and stock
+  - If not found → say "Shwee Shaung Mobile မှာ မရှိပါဘူး"
+""",
     }
 
-    instruction = instructions.get(understanding.intent, "")
+    instruction = intent_instructions.get(understanding.intent, "")
 
-    # Build the final prompt with STRICT boundaries
-    return f"""သင်သည် မြန်မာဖုန်းဆိုင် အရောင်းဝန်ထမ်း ဖြစ်သည်။{personalization}
+    # BUILD FINAL PROMPT
+    final_prompt = f"""သင်သည် Shwee Shaung Mobile ၏ အရောင်းဝန်ထမ်း ဖြစ်သည်။{personalization}
+
+{inventory_section}
+
+{strict_rules}
+
 {instruction}
 
-⚠️⚠️⚠️ CRITICAL DATA SOURCE RULES (MUST FOLLOW) ⚠️⚠️⚠️:
-
-✅ DO (လုပ်ရမည့်အရာများ):
-1. Use ONLY information from the Context below
-2. Show ALL matching products from database (တစ်ခုမှ မဖြုတ်ချရ), show exact price(559000 MMK)
-3. Show ALL fields from context (price, RAM/storage, color, specs), some field not show if that field does not involve in context
-4. Use Myanmar language naturally and Use English language for technical term(eg. charging, battery, camera, etc)
-5. If information not in database, clearly say "Shwee Shaung Mobile တွင် မရှိပါ"
-
-
-❌ DO NOT (လုံးဝလုပ်မရသောအရာများ):
-1. DO NOT guess or hallucinate product information
-2. DO NOT add colors not in database
-3. DO NOT add specifications not in database  
-4. DO NOT add models or brands not in database
-5. DO NOT use general knowledge for product information
-6. DO NOT make up prices or availability
-7. DO NOT suggest alternatives not in database
-8. Don't write Note if no deed
-
-🚨 IF ASKED ABOUT INFORMATION NOT IN DATABASE:
-- Clearly state: "ဒီအချက်အလက်က ကျွန်တော်တို့ရဲ့ Shwee Shaung Mobile တွင် မရှိပါဘူး"
-- DO NOT guess or make up information
-- Suggest contacting shop for more details
-
-Context (DATABASE အချက်အလက်များ):
+【ADDITIONAL CONTEXT FROM DATABASE】:
 {context}
 
-User Question: {understanding.standalone_query}
+【USER QUESTION】: {understanding.standalone_query}
 
-Remember: သင်သည် Database မှ အချက်အလက်များကိုသာ အသုံးပြု၍ ဖြေကြားရမည်။
-မြန်မာလို ယဉ်ကျေးစွာ ဖြေကြားပေးပါ။"""
+⚠️ Remember: You can ONLY talk about phones in the inventory above. If a phone is not listed in the inventory, you must say it's not available. Do NOT use your general knowledge about phones.
+-Prioritize Directness: Provide only the most concise and direct answer to the user's query.
+-Contextual Accuracy: If the answer is present within the provided context, extract and provide that specific information only.
+-Strict Boundary (IMPORTANT): If the answer is found, DO NOT include any follow-up suggestions, shop phone numbers, or addresses. Stop the response immediately after providing the factual answer.
+-Fallback Logic: Only if the context contains zero relevant information should you state, "တိကျတဲ့အချက်အလက် ရှာမတွေ့ပါဘူး" followed by the shop's contact details and address.
+-Prohibited Content: Remove all conversational fillers, unnecessary pleasantries, advice, and proactive suggestions.
+-မြန်မာလို ယဉ်ကျေးစွာ ဖြေကြားပေးပါ။"""
+
+    return final_prompt
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1085,6 +1145,7 @@ class CacheEntry:
 
 class TTLCache:
     """Cache with TTL"""
+
     def __init__(self, max_size: int = 1000, ttl: int = 3600):
         self.cache: Dict[str, CacheEntry] = OrderedDict()
         self.max_size = max_size
@@ -1150,8 +1211,8 @@ class Metrics:
             return {"status": "No queries yet"}
         return {
             "total": self.total,
-            "cache_hit_rate": f"{self.cache_hits/self.total*100:.1f}%",
-            "llm_call_rate": f"{self.llm_calls/self.total*100:.1f}%",
+            "cache_hit_rate": f"{self.cache_hits / self.total * 100:.1f}%",
+            "llm_call_rate": f"{self.llm_calls / self.total * 100:.1f}%",
             "intent_distribution": dict(self.by_intent),
         }
 
@@ -1182,7 +1243,7 @@ def get_final_prompt(message: str, history: list, llm, user_info: str = "") -> s
     fetched_context = False
 
     try:
-        logger.info(f"\n{'='*60}\n📩 Query: {message}\n{'='*60}")
+        logger.info(f"\n{'=' * 60}\n📩 Query: {message}\n{'=' * 60}")
 
         # ========================================
         # STEP 1: Check Cache
@@ -1306,9 +1367,9 @@ def get_final_prompt(message: str, history: list, llm, user_info: str = "") -> s
 
         elapsed = (time.time() - start_time) * 1000
         logger.info(f"✅ Done: {understanding.intent.value} | "
-                   f"LLM: {'✓' if used_llm else '✗'} | "
-                   f"Context: {'fetched' if fetched_context else 'reused'} | "
-                   f"{elapsed:.0f}ms\n{'='*60}\n")
+                    f"LLM: {'✓' if used_llm else '✗'} | "
+                    f"Context: {'fetched' if fetched_context else 'reused'} | "
+                    f"{elapsed:.0f}ms\n{'=' * 60}\n")
 
         return final_prompt
 
@@ -1320,6 +1381,129 @@ def get_final_prompt(message: str, history: list, llm, user_info: str = "") -> s
 User: {message}
 
 စနစ်တွင် ယာယီ ပြဿနာရှိနေပါသည်။ နောက်တစ်ကြိမ် ထပ်မေးကြည့်ပါ။"""
+
+
+def get_final_prompt_with_understanding(message: str, history: list, llm, user_info: str = "") -> Tuple[
+    str, QueryUnderstanding]:
+    """
+    Modified version that returns both prompt and understanding object
+    Needed for validation
+    """
+    start_time = time.time()
+    used_cache = False
+    used_llm = False
+    fetched_context = False
+
+    # Initialize these to None or empty so they exist if an error occurs early
+    final_prompt = ""
+    understanding = None
+
+    try:
+        logger.info(f"\n{'=' * 60}\n📩 Query: {message}\n{'=' * 60}")
+
+        # ========================================
+        # STEP 1: Check Cache
+        # ========================================
+        cached = _cache.get(message, len(history))
+        if cached:
+            used_cache = True
+            logger.info(f"💾 CACHE HIT")
+            _metrics.log(Intent.UNKNOWN, True, False, False)
+            # Assuming the cache returns the (prompt, understanding) tuple
+            return cached
+
+        # ========================================
+        # STEP 2: Fast Intent Classification
+        # ========================================
+        def use_llm_for_classification(msg):
+            return llm_classify_intent(msg, llm)
+
+        fast_intent, confidence = hybrid_classifier.classify(
+            message,
+            has_history=len(history) > 0,
+            use_llm=use_llm_for_classification
+        )
+
+        logger.info(f"🎯 Intent: {fast_intent.value} (confidence: {confidence:.2f})")
+
+        # ========================================
+        # STEP 3: Entity Extraction (Enhanced)
+        # ========================================
+        brands, models, entity_conf = entity_extractor.extract(message)
+        price_min, price_max = parse_price_range(message)
+        ram_storage = entity_extractor.extract_ram_storage(message)
+        color = entity_extractor.extract_color(message)
+
+        # ========================================
+        # STEP 4: Query Understanding
+        # ========================================
+        if fast_intent in [Intent.GREETING, Intent.CASUAL, Intent.CRM_QUESTION, Intent.TECHNICAL_SUPPORT]:
+            understanding = QueryUnderstanding(
+                intent=fast_intent,
+                standalone_query=message,
+                confidence=1.0
+            )
+        elif fast_intent == Intent.UNKNOWN or entity_conf < 0.5:
+            used_llm = True
+            understanding = llm_understand_query(message, history, llm, fast_intent)
+            understanding.brands = list(set(understanding.brands + brands))
+            understanding.models = list(set(understanding.models + models))
+            if price_min: understanding.price_min = price_min
+            if price_max: understanding.price_max = price_max
+            if ram_storage and not understanding.ram_storage:
+                understanding.ram_storage = ram_storage
+            if color and not understanding.color:
+                understanding.color = color
+        else:
+            understanding = QueryUnderstanding(
+                intent=fast_intent,
+                standalone_query=message,
+                brands=brands,
+                models=models,
+                price_min=price_min,
+                price_max=price_max,
+                ram_storage=ram_storage,
+                color=color,
+                confidence=entity_conf
+            )
+
+        # ========================================
+        # STEP 5: Context Retrieval
+        # ========================================
+        if _memory.can_reuse_context(understanding.intent):
+            context = _memory.last_context
+        else:
+            fetched_context = True
+            context = build_context_complete(understanding)
+            context = compress_context(context, Config.MAX_CONTEXT_TOKENS)
+
+        # ========================================
+        # STEP 6: Update Memory
+        # ========================================
+        _memory.update(understanding, context)
+
+        # ========================================
+        # STEP 7: Build Prompt
+        # ========================================
+        final_prompt = build_prompt(understanding, context, user_info)
+
+        # ========================================
+        # STEP 8: Cache & Log
+        # ========================================
+        _cache.set((final_prompt, understanding), message, len(history))
+        _metrics.log(understanding.intent, used_cache, used_llm, fetched_context)
+
+        elapsed = (time.time() - start_time) * 1000
+        logger.info(f"✅ Done: {understanding.intent.value} | {elapsed:.0f}ms\n{'=' * 60}\n")
+
+    except Exception as e:
+        logger.error(f"❌ Error in query processing: {str(e)}")
+        # Provide fallback behavior or re-raise
+        if understanding is None:
+            understanding = QueryUnderstanding(intent=Intent.UNKNOWN, standalone_query=message)
+        final_prompt = message
+
+    return final_prompt, understanding
 
 
 # ═══════════════════════════════════════════════════════════════════════════

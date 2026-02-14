@@ -13,6 +13,10 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
 
+# At the top of main.py, add import:
+from response_validator import validate_response
+import logic
+
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -235,6 +239,9 @@ async def get_session(request: Request, current_user: dict = Depends(get_optiona
     return {"session_id": session_id, "messages": [dict(m) for m in messages]}
 
 
+
+
+# Modify the chat_stream function:
 @app.post("/chat-stream")
 async def chat_stream(request: Request, current_user: dict = Depends(get_optional_user)):
     data = await request.json()
@@ -243,26 +250,30 @@ async def chat_stream(request: Request, current_user: dict = Depends(get_optiona
     model_type = data.get("model_type", "mistral-large")
     session_id = data.get("session_id")
 
-    # 1. User Profile context တည်ဆောက်ခြင်း
+    # User Profile context
     user_context = ""
     if current_user:
         name = current_user.get("username", "ဧည့်သည်")
         gender = str(current_user.get("gender", "male")).lower()
-
-        # နာမ်စား ခွဲခြားခြင်း
         title = "ကို" if gender in ["male", "ကျား"] else "မ"
-        # စာသားအနေနဲ့ AI ကို ညွှန်ကြားချက်ပေးခြင်း
         user_context = f"ဝယ်သူအမည်မှာ {title}{name} ဖြစ်သည်။"
 
     async def generate():
         try:
             llm = get_llm(model_type)
-            # 2. logic function ဆီသို့ user_context လှမ်းပို့ခြင်း
-            final_prompt = logic.get_final_prompt(message, history, llm, user_info=user_context)
-            messages = [{"role": h.get("role", "user"), "content": h.get("content", "")} for h in history[-4:]]
+
+            # Get final prompt with understanding object
+            final_prompt, understanding = logic.get_final_prompt_with_understanding(
+                message, history, llm, user_info=user_context
+            )
+
+            messages = [{"role": h.get("role", "user"), "content": h.get("content", "")}
+                        for h in history[-4:]]
             messages.append({"role": "user", "content": final_prompt})
+
             logger.info("🤖 Streaming...")
             full = ""
+
             try:
                 for chunk in llm.stream(messages):
                     text = chunk.content if hasattr(chunk, 'content') else str(chunk)
@@ -275,22 +286,41 @@ async def chat_stream(request: Request, current_user: dict = Depends(get_optiona
                 resp = llm.invoke(messages)
                 full = resp.content if hasattr(resp, 'content') else str(resp)
                 yield f"data: {json.dumps({'text': full})}\n\n"
+
+            # ========================================
+            # CRITICAL: VALIDATE RESPONSE
+            # ========================================
+            all_products = logic.get_all_products()
+            is_valid, validated_response = validate_response(full, understanding, all_products)
+
+            if not is_valid:
+                # Response failed - send correction
+                logger.warning("⚠️ Response failed validation, sending fallback")
+                correction = validated_response.replace(full, "")
+                if correction:
+                    yield f"data: {json.dumps({'text': correction, 'corrected': True})}\n\n"
+                full = validated_response
+
+            # Save to database
             if current_user and session_id:
                 try:
                     conn = get_users_db_conn()
                     conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
-                               (session_id, "user", message))
+                                 (session_id, "user", message))
                     conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
-                               (session_id, "assistant", full))
+                                 (session_id, "assistant", full))
                     conn.commit()
                     conn.close()
-                    logger.info(f"💾 Saved")
+                    logger.info(f"💾 Saved | Valid: {is_valid}")
                 except Exception as e:
                     logger.error(f"❌ DB error: {e}")
-            logger.info(f"✅ Done ({len(full)} chars)")
+
+            logger.info(f"✅ Done ({len(full)} chars) | Validation: {'PASS' if is_valid else 'FAIL'}")
+
         except Exception as e:
             logger.error(f"❌ Chat error: {e}")
             yield f"data: {json.dumps({'text': 'စနစ်တွင် ပြဿနာ ရှိနေပါသည်။', 'error': str(e)})}\n\n"
+
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 @app.get("/", response_class=HTMLResponse)
