@@ -522,6 +522,19 @@
         </div>
     </div>
 
+    <div class="modal-overlay" id="orderModal">
+    <div class="modal-content" style="max-width: 500px;">
+        <div class="modal-header">
+            <h3>My Order History</h3>
+            <button class="modal-close" onclick="closeOrderModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div id="orderList" class="profile-info" style="max-height: 400px; overflow-y: auto;">
+            </div>
+    </div>
+</div>
+
     <!-- Profile Modal -->
     <div class="modal-overlay" id="profileModal">
         <div class="modal-content">
@@ -640,8 +653,13 @@ async function checkAuth() {
 
 // Update navbar based on authentication
 function updateNavbar() {
-    if (currentUser) {
+   if (currentUser) {
         navbarActions.innerHTML = `
+            <button class="user-info-btn" onclick="showOrderHistory()" style="background: #e0f2fe; color: #0369a1;">
+                <i class="fas fa-shopping-bag"></i>
+                <span>Orders</span>
+            </button>
+
             <button class="user-info-btn" onclick="showProfileModal()">
                 <i class="fas fa-user-circle"></i>
                 <span>${currentUser.username}</span>
@@ -923,6 +941,46 @@ function addMessage(text, sender, scroll = true) {
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 }
+
+const orderModal = document.getElementById('orderModal');
+
+async function showOrderHistory() {
+    const orderList = document.getElementById('orderList');
+    orderList.innerHTML = '<p style="text-align:center;">Loading orders...</p>';
+    orderModal.classList.add('active');
+
+    try {
+        const response = await fetch('/api/orders', { credentials: 'include' });
+        const data = await response.json();
+
+        if (data.success && data.orders.length > 0) {
+            orderList.innerHTML = data.orders.map(order => `
+                <div class="profile-item" style="display: block; margin-bottom: 10px;">
+                    <div style="display: flex; justify-content: space-between; font-weight: bold;">
+                        <span>Order #${order.id}</span>
+                        <span style="color: #3b82f6;">${order.total_price} Ks</span>
+                    </div>
+                    <div style="font-size: 12px; color: #64748b; margin-top: 5px;">
+                        Status: <span style="color: #10b981;">${order.status}</span> | Date: ${new Date(order.created_at).toLocaleDateString()}
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            orderList.innerHTML = '<p style="text-align:center; color:#64748b;">မှာယူထားသည့်မှတ်တမ်း မရှိသေးပါ။</p>';
+        }
+    } catch (error) {
+        orderList.innerHTML = '<p style="text-align:center; color:red;">Error loading orders.</p>';
+    }
+}
+
+function closeOrderModal() {
+    orderModal.classList.remove('active');
+}
+
+// အပြင်ဘက်ကိုနှိပ်ရင် ပိတ်သွားအောင် လုပ်ခြင်း
+orderModal.addEventListener('click', (e) => {
+    if (e.target === orderModal) closeOrderModal();
+});
 
 // Close chat when clicking outside
 document.addEventListener('click', (e) => {

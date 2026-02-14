@@ -1,4 +1,4 @@
-"""Myanmar Mobile Sales AI Assistant - Fixed Version"""
+"""Myanmar Mobile Sales AI Assistant - With Ordering System"""
 import asyncio, json, os, sqlite3, uvicorn, hashlib, jwt, logging
 from datetime import datetime, timedelta
 from typing import Optional, Dict
@@ -13,9 +13,14 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
 
-# At the top of main.py, add import:
+# Import ordering system
+from order_system import (
+    OrderDatabase, OrderFlowManager, OrderState,
+    get_order_state, reset_order_state
+)
 from response_validator import validate_response
-import logic
+from advanced_intent_classifier import Intent
+
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -36,6 +41,10 @@ base_path = os.getenv("BASE_PATH")
 SQLITE_PATH = os.path.join(base_path, "phones.db")
 CHROMA_PATH = os.path.join(base_path, "chroma_db_v3")
 USERS_DB_PATH = os.path.join(base_path, "users.db")
+
+
+order_db = OrderDatabase(USERS_DB_PATH, SQLITE_PATH)
+order_manager = OrderFlowManager(order_db)
 
 # Embeddings
 embeddings = HuggingFaceEmbeddings(model_name="paraphrase-multilingual-MiniLM-L12-v2")
@@ -242,6 +251,10 @@ async def get_session(request: Request, current_user: dict = Depends(get_optiona
 
 
 # Modify the chat_stream function:
+# ═══════════════════════════════════════════════════════════════════════════
+# CHAT STREAM WITH ORDERING SYSTEM INTEGRATION
+# ═══════════════════════════════════════════════════════════════════════════
+
 @app.post("/chat-stream")
 async def chat_stream(request: Request, current_user: dict = Depends(get_optional_user)):
     data = await request.json()
@@ -249,6 +262,9 @@ async def chat_stream(request: Request, current_user: dict = Depends(get_optiona
     history = data.get("history", [])
     model_type = data.get("model_type", "mistral-large")
     session_id = data.get("session_id")
+
+    # Get user ID (None if guest)
+    user_id = current_user.get("id") if current_user else None
 
     # User Profile context
     user_context = ""
@@ -262,16 +278,212 @@ async def chat_stream(request: Request, current_user: dict = Depends(get_optiona
         try:
             llm = get_llm(model_type)
 
-            # Get final prompt with understanding object
+            # ═══════════════════════════════════════════════════
+            # STEP 1: Check Order State
+            # ═══════════════════════════════════════════════════
+            order_state = get_order_state(user_id, order_db) if user_id else OrderState.BROWSING
+            logger.info(f"🛒 Order State: {order_state.value}")
+
+            # ═══════════════════════════════════════════════════
+            # STEP 2: Handle Order Flow (if in ordering state)
+            # ═══════════════════════════════════════════════════
+            if order_state != OrderState.BROWSING and user_id:
+                # User is in ordering process
+                response = ""
+                new_state = order_state
+
+                # Handle different order states
+                if order_state == OrderState.CART_CONFIRM:
+                    # User is confirming whether to add to cart
+                    # This needs to go through handle_buy_intent which checks for "ADD TO CART"
+                    session = order_db.load_session(user_id)
+                    if session.pending_product:
+                        response, new_state = order_manager.handle_buy_intent(
+                            user_id, session.pending_product, message
+                        )
+                    else:
+                        # No pending product - reset to browsing
+                        response = "ပစ္စည်း ရွေးထားခြင်း မရှိပါ။ ဖုန်း ရွေးပြီး 'I want to buy' လို့ ပြောပါ။"
+                        new_state = OrderState.BROWSING
+                        session.state = OrderState.BROWSING
+                        order_db.save_session(user_id, session)
+
+                elif order_state == OrderState.CART_MANAGEMENT:
+                    # User is managing cart (VIEW CART, ADD MORE, CHECKOUT)
+                    response, new_state = order_manager.handle_cart_management(user_id, message)
+
+                else:
+                    # All other states (checkout flow: address, phone, payment, etc.)
+                    response, new_state = order_manager.handle_checkout_flow(user_id, message)
+
+                # Stream the response
+                yield f"data: {json.dumps({'text': response})}\n\n"
+
+                # Save to database
+                if session_id:
+                    try:
+                        conn = get_users_db_conn()
+                        conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
+                                     (session_id, "user", message))
+                        conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
+                                     (session_id, "assistant", response))
+                        conn.commit()
+                        conn.close()
+                    except Exception as e:
+                        logger.error(f"❌ DB error: {e}")
+
+                logger.info(f"✅ Order flow handled: {order_state.value} → {new_state.value}")
+                return
+
+            # ═══════════════════════════════════════════════════
+            # STEP 3: Get final prompt with understanding
+            # ═══════════════════════════════════════════════════
             final_prompt, understanding = logic.get_final_prompt_with_understanding(
                 message, history, llm, user_info=user_context
             )
 
+            # ═══════════════════════════════════════════════════
+            # STEP 4: Check for Buy Intent
+            # ═══════════════════════════════════════════════════
+            if understanding.intent == Intent.BUY_PRODUCT:
+                # Check authentication first
+                if not user_id:
+                    # Guest trying to buy - show login message
+                    response = """⚠️ Guest အနေနဲ့ Order မတင်နိုင်ပါဘူး။
+
+Order တင်ချင်ရင် အရင် Login လုပ်ပေးပါ။
+
+📌 Login လုပ်ရန် သို့မဟုတ် Register လုပ်ရန် ညာဘက်ထောင့်က Menu ကို နှိပ်ပါ။
+
+Guest အနေဖြင့် ဖုန်းတွေ ကြည့်လို့ရပါတယ်။"""
+
+                    yield f"data: {json.dumps({'text': response})}\n\n"
+
+                    if session_id:
+                        try:
+                            conn = get_users_db_conn()
+                            conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
+                                       (session_id, "user", message))
+                            conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
+                                       (session_id, "assistant", response))
+                            conn.commit()
+                            conn.close()
+                        except Exception as e:
+                            logger.error(f"❌ DB error: {e}")
+
+                    logger.info("✅ Guest buy attempt blocked")
+                    return
+
+                # User is authenticated - proceed with buy
+                # Extract product info from understanding
+                product = None
+
+                if understanding.models:
+                    # Models contain full name like "iPhone 17 Pro Max"
+                    full_model = understanding.models[0]
+                    logger.info(f"🔍 Searching for product: {full_model}")
+
+                    # Try to find product by full name first
+                    product = order_db.get_product_by_full_name(full_model)
+
+                    # If not found, try splitting brand and model
+                    if not product and understanding.brands:
+                        brand = understanding.brands[0]
+                        # Remove brand from full model to get just the model
+                        model = full_model.replace(brand, "").strip()
+                        logger.info(f"🔍 Trying split: brand='{brand}', model='{model}'")
+                        product = order_db.get_product_by_brand_model(brand, model)
+
+                    if product:
+                        # Handle buy intent through order manager
+                        response, new_state = order_manager.handle_buy_intent(
+                            user_id, product, message
+                        )
+
+                        yield f"data: {json.dumps({'text': response})}\n\n"
+
+                        # Save to database
+                        if session_id:
+                            try:
+                                conn = get_users_db_conn()
+                                conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
+                                             (session_id, "user", message))
+                                conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
+                                             (session_id, "assistant", response))
+                                conn.commit()
+                                conn.close()
+                            except Exception as e:
+                                logger.error(f"❌ DB error: {e}")
+
+                        logger.info(f"✅ Buy intent handled: {new_state.value}")
+                        return
+                    else:
+                        # Product not found - let LLM handle with normal flow
+                        logger.warning(f"⚠️ Product not found: {full_model} - falling back to LLM")
+                        # Continue to normal LLM flow below
+                else:
+                    # No model extracted but buy intent - let LLM clarify
+                    logger.warning(f"⚠️ Buy intent but no product identified - falling back to LLM")
+                    # Continue to normal LLM flow below
+
+            # ═══════════════════════════════════════════════════
+            # STEP 5: Handle Cart Commands
+            # ═══════════════════════════════════════════════════
+            elif understanding.intent == Intent.CART_COMMAND:
+                if not user_id:
+                    # Guest trying to use cart - show login message
+                    response = """⚠️ Guest အနေနဲ့ Cart အသုံးပြု၍ မရပါ။
+
+Order တင်ချင်ရင် အရင် Login လုပ်ပေးပါ။
+
+📌 Login လုပ်ရန် သို့မဟုတ် Register လုပ်ရန် ညာဘက်ထောင့်က Menu ကို နှိပ်ပါ။"""
+
+                    yield f"data: {json.dumps({'text': response})}\n\n"
+
+                    if session_id:
+                        try:
+                            conn = get_users_db_conn()
+                            conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
+                                       (session_id, "user", message))
+                            conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
+                                       (session_id, "assistant", response))
+                            conn.commit()
+                            conn.close()
+                        except Exception as e:
+                            logger.error(f"❌ DB error: {e}")
+
+                    logger.info("✅ Guest cart attempt blocked")
+                    return
+
+                # User is authenticated - handle cart command
+                response, new_state = order_manager.handle_cart_management(user_id, message)
+
+                yield f"data: {json.dumps({'text': response})}\n\n"
+
+                # Save to database
+                if session_id:
+                    try:
+                        conn = get_users_db_conn()
+                        conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
+                                     (session_id, "user", message))
+                        conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
+                                     (session_id, "assistant", response))
+                        conn.commit()
+                        conn.close()
+                    except Exception as e:
+                        logger.error(f"❌ DB error: {e}")
+
+                logger.info(f"✅ Cart command handled: {new_state.value}")
+                return
+
+            # ═══════════════════════════════════════════════════
+            # STEP 6: Normal Product Query (LLM Response)
+            # ═══════════════════════════════════════════════════
             messages = [{"role": h.get("role", "user"), "content": h.get("content", "")}
                         for h in history[-4:]]
             messages.append({"role": "user", "content": final_prompt})
 
-            logger.info("🤖 Streaming...")
+            logger.info("🤖 Streaming LLM response...")
             full = ""
 
             try:
@@ -287,14 +499,13 @@ async def chat_stream(request: Request, current_user: dict = Depends(get_optiona
                 full = resp.content if hasattr(resp, 'content') else str(resp)
                 yield f"data: {json.dumps({'text': full})}\n\n"
 
-            # ========================================
-            # CRITICAL: VALIDATE RESPONSE
-            # ========================================
+            # ═══════════════════════════════════════════════════
+            # STEP 7: Validate Response
+            # ═══════════════════════════════════════════════════
             all_products = logic.get_all_products()
             is_valid, validated_response = validate_response(full, understanding, all_products)
 
             if not is_valid:
-                # Response failed - send correction
                 logger.warning("⚠️ Response failed validation, sending fallback")
                 correction = validated_response.replace(full, "")
                 if correction:
@@ -394,6 +605,12 @@ async def delete_user(user_id: int):
     # Redirect back to the users list after deletion
     return RedirectResponse(url="/usersession", status_code=303)
 
+# New: View user orders
+@app.get("/api/orders")
+async def get_user_orders(current_user: dict = Depends(get_current_user)):
+    orders = order_db.get_user_orders(current_user["id"])
+    return {"success": True, "orders": orders}
+
 
 @app.exception_handler(HTTPException)
 async def http_handler(request: Request, exc: HTTPException):
@@ -413,13 +630,18 @@ async def startup():
     logger.info(f"🤖 Models: {', '.join(MODEL_REGISTRY.keys())}")
     logger.info(f"🔐 SECRET_KEY: {'✅ From .env' if os.getenv('SECRET_KEY') else '⚠️ Default (DEV ONLY)'}")
     logger.info("="*80)
+
 @app.get("/reset")
-async def handle_reset():
+async def handle_reset(current_user: dict = Depends(get_optional_user)):
     logic.reset_conversation()
     logic.reset_all_metrics()
-    logic.get_router_metrics()
-    return {"status": "success", "message": "Conversation memory cleared"}
 
+    # Reset order state if user is logged in
+    if current_user:
+        reset_order_state(current_user["id"], order_db)
+        logger.info(f"🔄 Order state reset for user {current_user['id']}")
+
+    return {"status": "success", "message": "Conversation memory and order state cleared"}
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

@@ -45,6 +45,11 @@ class Intent(str, Enum):
     RECOMMENDATION = "recommendation"
     STOCK_CHECK = "stock_check"
 
+    # Ordering intents - NEW
+    BUY_PRODUCT = "buy_product"  # User wants to buy a specific product
+    CART_COMMAND = "cart_command"  # Cart management (view, add, checkout)
+    ORDER_INPUT = "order_input"  # User providing order details (address, phone, etc)
+
     # Follow-up
     FOLLOWUP = "followup"
     UNKNOWN = "unknown"
@@ -129,6 +134,23 @@ INTENT_EXAMPLES = {
     Intent.STOCK_CHECK: [
         "do you have", "available", "in stock", "ရှိလား", "ရနိုင်လား",
         "stock ရှိလား", "လက်ကျန်",
+    ],
+
+    Intent.BUY_PRODUCT: [
+        "i want to buy", "i'll take", "want to purchase", "order this",
+        "ဝယ်မယ်", "ယူမယ်", "order တင်မယ်", "ဝယ်ချင်တယ်",
+        "အဲဒါ ဝယ်မယ်", "ဒါကို ဝယ်မယ်",
+    ],
+
+    Intent.CART_COMMAND: [
+        "view cart", "show cart", "cart", "checkout",
+        "add to cart", "add more", "continue shopping",
+        "cart ကြည့်", "ဆက်ထည့်", "ထပ်ထည့်", "checkout လုပ်",
+    ],
+
+    Intent.ORDER_INPUT: [
+        # This is detected by order state, not by keywords
+        # Used when user is in ordering flow
     ],
 
     Intent.FOLLOWUP: [
@@ -322,6 +344,25 @@ class RuleBasedClassifier:
                 r'(do\s+you\s+have|got|available)',
                 r'(in\s+stock|stock|လက်ကျန်)',
                 r'(ရှိ|ရ|ရနိုင်)လား',
+            ],
+
+            Intent.BUY_PRODUCT: [
+                # Buy intent - MUST be specific
+                r'(want|wanna|like).*(buy|purchase|order|get)',
+                r'(buy|purchase|order).*(this|that|the)',
+                r'(i\'ll|i\s+will).*(take|buy|get)',
+                r'(ဝယ်|ယူ).*(မယ်|ချင်)',
+                r'(order|အော်ဒါ).*(တင်|လုပ်)',
+                r'(ဒါ|အဲဒါ|ဟို).*(ဝယ်|ယူ)',
+            ],
+
+            Intent.CART_COMMAND: [
+                # Cart management keywords - STRICT
+                r'(add\s+to\s+cart|add\s+more)',
+                r'(view|show|check).*(cart|တောင်း)',
+                r'(checkout|check\s+out)',
+                r'cart',
+                r'(ဆက်|ထပ်).*(ထည့်|ယူ)',
             ],
 
             Intent.FOLLOWUP: [

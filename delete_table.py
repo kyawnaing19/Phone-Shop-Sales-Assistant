@@ -4,7 +4,10 @@ import sqlite3
 def delete_redundant_tables(db_file):
     # List of tables you want to remove
     tables_to_drop = [
-        "cart"
+        "orders",
+        "order_items",
+        "shopping_cart",
+        "order_sessions",
     ]
 
     try:

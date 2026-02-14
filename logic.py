@@ -1437,10 +1437,14 @@ def get_final_prompt_with_understanding(message: str, history: list, llm, user_i
         # ========================================
         # STEP 4: Query Understanding
         # ========================================
-        if fast_intent in [Intent.GREETING, Intent.CASUAL, Intent.CRM_QUESTION, Intent.TECHNICAL_SUPPORT]:
+        # Handle ordering intents specially - they don't need context building
+        if fast_intent in [Intent.GREETING, Intent.CASUAL, Intent.CRM_QUESTION, Intent.TECHNICAL_SUPPORT,
+                          Intent.BUY_PRODUCT, Intent.CART_COMMAND, Intent.ORDER_INPUT]:
             understanding = QueryUnderstanding(
                 intent=fast_intent,
                 standalone_query=message,
+                brands=brands,  # Still extract brands/models for BUY_PRODUCT
+                models=models,
                 confidence=1.0
             )
         elif fast_intent == Intent.UNKNOWN or entity_conf < 0.5:
@@ -1468,9 +1472,15 @@ def get_final_prompt_with_understanding(message: str, history: list, llm, user_i
             )
 
         # ========================================
-        # STEP 5: Context Retrieval
+        # STEP 5: Context Retrieval (Skip for ordering intents)
         # ========================================
-        if _memory.can_reuse_context(understanding.intent):
+        context = ""
+
+        # Skip context building for ordering intents - they're handled by order_manager
+        if fast_intent in [Intent.BUY_PRODUCT, Intent.CART_COMMAND, Intent.ORDER_INPUT]:
+            logger.info(f"⏭️ Skipping context for ordering intent: {fast_intent.value}")
+            context = ""
+        elif _memory.can_reuse_context(understanding.intent):
             context = _memory.last_context
         else:
             fetched_context = True
