@@ -102,7 +102,7 @@ class Config:
     FUZZY_THRESHOLD = 85
 
     # Context management
-    MAX_CONTEXT_TOKENS = 3000
+    MAX_CONTEXT_TOKENS = 22150
     ENABLE_COMPRESSION = True
 
 
@@ -500,20 +500,19 @@ def get_vector_store():
 # ═══════════════════════════════════════════════════════════════════════════
 
 def format_price(price: int) -> str:
-    """Format price Myanmar style"""
     if price >= 100000:
         lakh = price // 100000
-        remainder = price % 100000
-        if remainder == 0:
-            return f"{lakh} သိန်း"
-        elif remainder >= 10000:
-            man = remainder // 10000
-            return f"{lakh} သိန်း {man} သောင်း"
-        else:
-            thou = remainder // 1000
-            if thou > 0:
-                return f"{lakh} သိန်း {thou} ထောင်"
-            return f"{lakh} သိန်း"
+        rem = price % 100000
+        thou_10 = rem // 10000
+        thou_1 = (rem % 10000) // 1000
+
+        result = f"{lakh} သိန်း"
+        if thou_10 > 0:
+            result += f" {thou_10} သောင်း"
+        if thou_1 > 0:
+            result += f" {thou_1} ထောင်"
+        return result
+
     return f"{price:,} ကျပ်"
 
 
@@ -826,7 +825,7 @@ This is NOT a product query - you can provide general technical guidance."""
     return "အချက်အလက် DATABASE တွင် မတွေ့ရှိပါ။"
 
 
-def compress_context(context: str, max_tokens: int = 3000) -> str:
+def compress_context(context: str, max_tokens: int = 22150) -> str:
     """Compress context if too large"""
     if not Config.ENABLE_COMPRESSION:
         return context
@@ -968,13 +967,14 @@ DO NOT invent specs or colors.""",
 🎯 လုပ်ဆောင်ချက်:
 - Brand အမျိုးမျိုးမှ ရွေးချယ်စရာများ ပေးရမည်
 - အနည်းဆုံး ၃ ခု အကြံပြုပါ
-- Database မှ အချက်အလက်များကိုသာ အခြေခံရမည်
 ❌ Database တွင် မရှိသော မော်ဒယ်များ မအကြံပြုရ""",
 
         Intent.SPEC_SEARCH: """
 🎯 လုပ်ဆောင်ချက်:
 - မေးထားသော specification နှင့် ကိုက်ညီသော ဖုန်းများကို ပြရမည်
 - Brand အမျိုးမျိုး ပါအောင် ပြပါ
+- Database and context မှ အချက်အလက်များကိုသာ အသုံးပြုရမည်
+-DO NOT invent price or colors.
 ❌ Specification မကိုက်ညီသော မော်ဒယ်များ မပြရ""",
 
         Intent.STOCK_CHECK: """
@@ -994,10 +994,11 @@ DO NOT invent specs or colors.""",
 
 ✅ DO (လုပ်ရမည့်အရာများ):
 1. Use ONLY information from the Context below
-2. Show ALL matching products from database (တစ်ခုမှ မဖြုတ်ချရ)
-3. Include ALL fields: price, RAM/storage, color, specs
-4. Use Myanmar language naturally
-5. If information not in database, clearly say "DATABASE တွင် မရှိပါ"
+2. Show ALL matching products from database (တစ်ခုမှ မဖြုတ်ချရ), show exact price(559000 MMK)
+3. Show ALL fields from context (price, RAM/storage, color, specs), some field not show if that field does not involve in context
+4. Use Myanmar language naturally and Use English language for technical term(eg. charging, battery, camera, etc)
+5. If information not in database, clearly say "Shwee Shaung Mobile တွင် မရှိပါ"
+
 
 ❌ DO NOT (လုံးဝလုပ်မရသောအရာများ):
 1. DO NOT guess or hallucinate product information
@@ -1007,9 +1008,10 @@ DO NOT invent specs or colors.""",
 5. DO NOT use general knowledge for product information
 6. DO NOT make up prices or availability
 7. DO NOT suggest alternatives not in database
+8. Don't write Note if no deed
 
 🚨 IF ASKED ABOUT INFORMATION NOT IN DATABASE:
-- Clearly state: "ဒီအချက်အလက်က ကျွန်တော်တို့ရဲ့ DATABASE တွင် မရှိပါဘူး"
+- Clearly state: "ဒီအချက်အလက်က ကျွန်တော်တို့ရဲ့ Shwee Shaung Mobile တွင် မရှိပါဘူး"
 - DO NOT guess or make up information
 - Suggest contacting shop for more details
 
