@@ -556,9 +556,10 @@ def build_context_complete(understanding: QueryUnderstanding) -> str:
             category = detect_policy_category(understanding.standalone_query)
             policy_text = get_policy(category)
             logger.info(f"📋 CRM Policy: {category}")
-            return policy_text
+           # return policy_text
+            return f"""# ❌ DO NOT recommend specific phone models {policy_text}"""
         else:
-            return "CRM အကြောင်း အထွေထွေ အချက်အလက်များကို ဖြေကြားပေးပါ။"
+            return "တိုတောင်း၍ ယဉ်ကျေးစွာ ဖြေကြားပေးပါ။❌ DO NOT recommend specific phone models"
 
     # ========================================
     # TECHNICAL SUPPORT - Can use LLM knowledge

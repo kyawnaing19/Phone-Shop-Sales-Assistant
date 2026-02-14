@@ -377,6 +377,7 @@ Guest အနေဖြင့် ဖုန်းတွေ ကြည့်လို
                 # User is authenticated - proceed with buy
                 # Extract product info from understanding
                 product = None
+                full_model = None  # Initialize to avoid undefined variable error
 
                 if understanding.models:
                     # Models contain full name like "iPhone 17 Pro Max"
@@ -394,36 +395,45 @@ Guest အနေဖြင့် ဖုန်းတွေ ကြည့်လို
                         logger.info(f"🔍 Trying split: brand='{brand}', model='{model}'")
                         product = order_db.get_product_by_brand_model(brand, model)
 
-                    if product:
-                        # Handle buy intent through order manager
-                        response, new_state = order_manager.handle_buy_intent(
-                            user_id, product, message
-                        )
+                # If still no product found and we have brands, try aggressive search
+                if not product and understanding.brands:
+                    brand = understanding.brands[0]
+                    logger.info(f"🔍 Aggressive search: looking for any {brand} model in message")
+                    # Try to find any product from this brand
+                    product = order_db.get_product_by_partial_match(message)
 
-                        yield f"data: {json.dumps({'text': response})}\n\n"
+                # Last resort: try searching the entire message for product match
+                if not product:
+                    logger.info(f"🔍 Last resort: searching entire message for product match")
+                    product = order_db.get_product_by_partial_match(message)
 
-                        # Save to database
-                        if session_id:
-                            try:
-                                conn = get_users_db_conn()
-                                conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
-                                             (session_id, "user", message))
-                                conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
-                                             (session_id, "assistant", response))
-                                conn.commit()
-                                conn.close()
-                            except Exception as e:
-                                logger.error(f"❌ DB error: {e}")
+                if product:
+                    # Handle buy intent through order manager
+                    response, new_state = order_manager.handle_buy_intent(
+                        user_id, product, message
+                    )
 
-                        logger.info(f"✅ Buy intent handled: {new_state.value}")
-                        return
-                    else:
-                        # Product not found - let LLM handle with normal flow
-                        logger.warning(f"⚠️ Product not found: {full_model} - falling back to LLM")
-                        # Continue to normal LLM flow below
+                    yield f"data: {json.dumps({'text': response})}\n\n"
+
+                    # Save to database
+                    if session_id:
+                        try:
+                            conn = get_users_db_conn()
+                            conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
+                                       (session_id, "user", message))
+                            conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
+                                       (session_id, "assistant", response))
+                            conn.commit()
+                            conn.close()
+                        except Exception as e:
+                            logger.error(f"❌ DB error: {e}")
+
+                    logger.info(f"✅ Buy intent handled: {new_state.value}")
+                    return
                 else:
-                    # No model extracted but buy intent - let LLM clarify
-                    logger.warning(f"⚠️ Buy intent but no product identified - falling back to LLM")
+                    # Product not found - let LLM handle with normal flow
+                    search_term = full_model if full_model else message
+                    logger.warning(f"⚠️ Product not found: {search_term} - falling back to LLM")
                     # Continue to normal LLM flow below
 
             # ═══════════════════════════════════════════════════

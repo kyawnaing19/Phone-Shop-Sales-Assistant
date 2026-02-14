@@ -207,7 +207,6 @@ class RuleBasedClassifier:
                 r'(map|direction|navigate|find.*shop)',
                 r'(ဆိုင်|စတိုး).*(လိပ်စာ|နေရာ|ဘယ်မှာ)',
                 r'(လိပ်စာ|တည်နေရာ|နေရာ)',
-                r'(ဘယ်|ဘယ်မှာ|ဘယ်နား).*(ရှိ|လဲ|မှာ)',
                 r'(map|မြေပုံ)',
 
                 # Hours - EXPANDED

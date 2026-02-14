@@ -201,7 +201,7 @@ def validate_response(
         # Generate fallback response (Myanmar language)
         fallback = f"""
 
-သင် စုံစမ်းလိုတဲ့ ဖုန်းနဲ့ ပတ်သက်ပြီး Shwee Shaung Mobile မှာ ရှိမရှိ စစ်ဆေးလိုပါက:
+
 
 📞 ဖုန်း: 09-671698821
 📞 အခြား: 09-4355737883

@@ -46,6 +46,7 @@ SHOP_INFO = {
 # ═══════════════════════════════════════════════════════════════════════════
 
 WARRANTY_POLICY = """
+❌ DO NOT recommend specific phone models unless asked
 # 🛡️ အာမခံမူဝါဒ
 
 ## ✅ အာမခံကာလများ:
@@ -97,6 +98,7 @@ WARRANTY_POLICY = """
 # ═══════════════════════════════════════════════════════════════════════════
 
 RETURN_POLICY = """
+❌ DO NOT recommend specific phone models unless asked
 # 🔄 ပြန်အမ်းခြင်း နှင့် လဲလှယ်ခြင်း မူဝါဒ
 
 ***ဝယ်ပြီး ပစ္စည်း ပြန်မအမ်းပေးပါ။
@@ -168,6 +170,7 @@ PAYMENT_METHODS = """
 # ═══════════════════════════════════════════════════════════════════════════
 
 CUSTOMER_SUPPORT = """
+❌ DO NOT recommend specific phone models unless asked
 # 🎧 ဝယ်သူ ဝန်ဆောင်မှု
 
 ## 📞 ဆက်သွယ်နည်းလမ်းများ:
@@ -257,6 +260,7 @@ A: No.
 # ═══════════════════════════════════════════════════════════════════════════
 
 PRIVACY_POLICY = """
+
 # 🔒 အချက်အလက် လုံခြုံရေး နှင့် ကိုယ်ရေးကိုယ်တာ လုံခြုံမှု
 
 ## 🛡️ သင့်အချက်အလက်များကို ဘယ်လို သိမ်းဆည်းပါသလဲ?
@@ -560,7 +564,7 @@ def detect_policy_category(message: str) -> str:
         return "support"
 
     # Privacy
-    if any(word in message_lower for word in ['privacy', 'data', 'security', 'protect', 'လုံခြုံ', 'အချက်အလက်']):
+    if any(word in message_lower for word in ['privacy', 'data', 'security', 'protect', 'လုံခြုံ',]):
         return "privacy"
 
     # Complaint

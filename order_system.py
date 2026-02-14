@@ -168,6 +168,24 @@ class OrderDatabase:
     def _init_tables(self):
         """Initialize order tables"""
         with self._get_connection() as conn:
+            # Check if tables exist and migrate if needed
+            cursor = conn.execute("""
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name='orders'
+            """)
+            table_exists = cursor.fetchone() is not None
+
+            if table_exists:
+                # Check if order_number column exists
+                cursor = conn.execute("PRAGMA table_info(orders)")
+                columns = [row[1] for row in cursor.fetchall()]
+
+                if 'order_number' not in columns:
+                    logger.warning("⚠️ Migrating orders table - adding order_number column")
+                    # Drop and recreate table (or use ALTER TABLE if you want to preserve data)
+                    conn.execute("DROP TABLE IF EXISTS order_items")
+                    conn.execute("DROP TABLE IF EXISTS orders")
+
             # Orders table
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS orders (
@@ -259,6 +277,137 @@ class OrderDatabase:
             row = cursor.fetchone()
 
             return dict(row) if row else None
+
+    def get_product_by_partial_match(self, search_text: str) -> Optional[Dict]:
+        """Search for product by partial match with smart model number extraction
+
+        Prioritizes exact model number matches over partial text matches.
+
+        Examples:
+        - "xiaomi 15" → finds "Xiaomi 15 Pro" (not "Xiaomi Civi 3")
+        - "i want to buy xiaomi 15" → extracts "xiaomi 15", finds "Xiaomi 15 Pro"
+        - "samsung s24 ultra" → finds "Samsung Galaxy S24 Ultra"
+        """
+        import re
+
+        with self._get_products_connection() as conn:
+            search_lower = search_text.lower().strip()
+
+            # Extract model numbers and identifiers with improved precision
+            # Use word boundaries to match standalone numbers only
+            model_patterns = [
+                r'\b([a-z]\d+[a-z]*)\b',  # s24, v60, x6 (letter+number combos)
+                r'\b(\d+)\b',              # 15, 17, 13 (standalone numbers ONLY - won't match "1" in "17")
+                r'\b([a-z]+\s+\d+)\b'      # note 13, civi 3 (phrase + number)
+            ]
+
+            model_identifiers = []
+            for pattern in model_patterns:
+                matches = re.findall(pattern, search_lower)
+                model_identifiers.extend(matches)
+
+            # Remove duplicates while preserving order
+            seen = set()
+            model_identifiers = [x for x in model_identifiers if not (x in seen or seen.add(x))]
+
+            # Extract brand name (common brands)
+            brands_in_db = [
+                'xiaomi', 'samsung', 'iphone', 'apple', 'vivo', 'oppo', 'realme',
+                'redmi', 'poco', 'oneplus', 'google', 'pixel', 'nokia', 'tecno', 'itel'
+            ]
+
+            found_brand = None
+            for brand in brands_in_db:
+                if brand in search_lower:
+                    found_brand = brand
+                    break
+
+            # Build smart query
+            if model_identifiers:
+                # We have model identifiers - prioritize exact model number matches
+                model_id = model_identifiers[0].strip()  # Use first identifier found
+
+                logger.info(f"🔍 Extracted: brand='{found_brand}', model_id='{model_id}'")
+
+                if found_brand:
+                    # Search with both brand and model number using exact word boundaries
+                    # This ensures "17" matches "17 Pro" but NOT "13" or "173"
+                    cursor = conn.execute("""
+                        SELECT *, 
+                            (CASE 
+                                -- Exact model match
+                                WHEN LOWER(brand) = ? AND LOWER(model) = ? THEN 1
+                                -- Model starts with number + space (e.g., "17 Pro")
+                                WHEN LOWER(brand) = ? AND LOWER(model) LIKE ? THEN 2
+                                -- Model ends with space + number (e.g., "iPhone 17")
+                                WHEN LOWER(brand) = ? AND LOWER(model) LIKE ? THEN 3
+                                -- Model has number surrounded by spaces (e.g., "Note 17 Pro")
+                                WHEN LOWER(brand) = ? AND LOWER(model) LIKE ? THEN 4
+                                -- Fallback: contains (for partial matches)
+                                WHEN LOWER(brand) = ? AND LOWER(model) LIKE ? THEN 5
+                                -- Full name match
+                                WHEN LOWER(brand || ' ' || model) LIKE ? THEN 6
+                                ELSE 7
+                            END) as score
+                        FROM products 
+                        WHERE LOWER(brand) = ?
+                          AND (LOWER(model) = ? OR LOWER(model) LIKE ? OR LOWER(model) LIKE ? OR LOWER(model) LIKE ?)
+                        ORDER BY score ASC, LENGTH(model) ASC
+                        LIMIT 1
+                    """, (
+                        found_brand, model_id,              # Exact match
+                        found_brand, f'{model_id} %',      # Starts: "17 Pro"
+                        found_brand, f'% {model_id}',      # Ends: "iPhone 17"
+                        found_brand, f'% {model_id} %',    # Middle: "Note 17 Pro"
+                        found_brand, f'%{model_id}%',      # Fallback contains
+                        f'%{found_brand}%{model_id}%',     # Full text
+                        found_brand,                        # WHERE brand
+                        model_id,                           # WHERE exact
+                        f'{model_id} %',                    # WHERE starts
+                        f'% {model_id}',                    # WHERE ends
+                        f'% {model_id} %'                   # WHERE middle
+                    ))
+                else:
+                    # Just model number, no brand
+                    cursor = conn.execute("""
+                        SELECT *, 
+                            (CASE 
+                                WHEN LOWER(model) LIKE ? THEN 1
+                                WHEN LOWER(model) LIKE ? THEN 2
+                                WHEN LOWER(model) LIKE ? THEN 3
+                                ELSE 4
+                            END) as score
+                        FROM products 
+                        WHERE LOWER(model) LIKE ? OR LOWER(model) LIKE ? OR LOWER(model) LIKE ?
+                        ORDER BY score ASC, LENGTH(model) ASC
+                        LIMIT 1
+                    """, (
+                        f'{model_id} %',
+                        f'% {model_id} %',
+                        f'% {model_id}',
+                        f'{model_id} %',
+                        f'% {model_id} %',
+                        f'% {model_id}'
+                    ))
+            else:
+                # No clear model identifier - fall back to general text search
+                cursor = conn.execute("""
+                    SELECT * FROM products 
+                    WHERE LOWER(brand || ' ' || model) LIKE ?
+                    ORDER BY LENGTH(brand || ' ' || model) ASC
+                    LIMIT 1
+                """, (f'%{search_lower}%',))
+
+            row = cursor.fetchone()
+
+            if row:
+                result = dict(row)
+                result.pop('score', None)
+                logger.info(f"✅ Matched: {result['brand']} {result['model']}")
+                return result
+
+            logger.warning(f"❌ No match found for: {search_text}")
+            return None
 
     def save_session(self, user_id: int, session: OrderSession):
         """Save order session to database"""
