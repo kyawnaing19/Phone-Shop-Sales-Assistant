@@ -38,6 +38,7 @@ class OrderState(str, Enum):
     PHONE_INPUT = "phone_input"  # Waiting for phone number
     PAYMENT_SELECT = "payment_select"  # Selecting payment method
     NOTE_INPUT = "note_input"  # Optional note input
+    TRANSACTION_INPUT = "transaction_input"  # Transaction number input (for digital payments)
     ORDER_COMPLETE = "order_complete"  # Order successfully placed
 
 
@@ -91,6 +92,7 @@ class OrderSession:
     phone_number: Optional[str] = None
     payment_method: Optional[str] = None
     note: Optional[str] = None
+    transaction_number: Optional[str] = None  # For digital payment transactions
 
     def to_dict(self) -> Dict:
         return {
@@ -101,7 +103,8 @@ class OrderSession:
             "delivery_address": self.delivery_address,
             "phone_number": self.phone_number,
             "payment_method": self.payment_method,
-            "note": self.note
+            "note": self.note,
+            "transaction_number": self.transaction_number
         }
 
     @classmethod
@@ -116,7 +119,8 @@ class OrderSession:
             delivery_address=data.get('delivery_address'),
             phone_number=data.get('phone_number'),
             payment_method=data.get('payment_method'),
-            note=data.get('note')
+            note=data.get('note'),
+            transaction_number=data.get('transaction_number')
         )
 
     def get_cart_total(self) -> int:
@@ -176,17 +180,25 @@ class OrderDatabase:
             table_exists = cursor.fetchone() is not None
 
             if table_exists:
-                # Check if order_number column exists
+                # Check if columns exist
                 cursor = conn.execute("PRAGMA table_info(orders)")
                 columns = [row[1] for row in cursor.fetchall()]
 
+                # Check for missing columns
+                needs_migration = False
                 if 'order_number' not in columns:
                     logger.warning("⚠️ Migrating orders table - adding order_number column")
-                    # Drop and recreate table (or use ALTER TABLE if you want to preserve data)
+                    needs_migration = True
+                if 'transaction_number' not in columns:
+                    logger.warning("⚠️ Migrating orders table - adding transaction_number column")
+                    needs_migration = True
+
+                if needs_migration:
+                    # Drop and recreate tables
                     conn.execute("DROP TABLE IF EXISTS order_items")
                     conn.execute("DROP TABLE IF EXISTS orders")
 
-            # Orders table
+            # Orders table (with transaction_number)
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS orders (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -197,6 +209,7 @@ class OrderDatabase:
                     phone_number TEXT NOT NULL,
                     payment_method TEXT NOT NULL,
                     note TEXT,
+                    transaction_number TEXT,
                     status TEXT DEFAULT 'pending',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
@@ -465,8 +478,8 @@ class OrderDatabase:
             cursor = conn.execute("""
                 INSERT INTO orders (
                     order_number, user_id, total_amount,
-                    delivery_address, phone_number, payment_method, note
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    delivery_address, phone_number, payment_method, note, transaction_number
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 order_number,
                 user_id,
@@ -474,7 +487,8 @@ class OrderDatabase:
                 session.delivery_address,
                 session.phone_number,
                 session.payment_method,
-                session.note
+                session.note,
+                session.transaction_number
             ))
 
             order_id = cursor.lastrowid
@@ -528,8 +542,11 @@ class OrderFlowManager:
         "add_to_cart": "ADD TO CART",
         "view_cart": "VIEW CART",
         "add_more": "ADD MORE",
+        "browse": "BROWSE",
         "checkout": "CHECKOUT",
         "confirm_order": "CONFIRM ORDER",
+        "cancel": "CANCEL",
+        "clear_cart": "CLEAR CART",
         "skip": "SKIP",
         "pay_kbz": "PAY KBZ",
         "pay_wave": "PAY WAVE",
@@ -567,7 +584,15 @@ class OrderFlowManager:
 
         # If already in cart confirmation, check for keyword
         if session.state == OrderState.CART_CONFIRM:
-            if self.check_keyword(message, self.KEYWORDS["add_to_cart"]):
+            # Check for CANCEL
+            if self.check_keyword(message, self.KEYWORDS["cancel"]):
+                session.state = OrderState.BROWSING
+                session.pending_product = None
+                self.db.save_session(user_id, session)
+                return "ကောင်းပါပြီ။ ဘာကူညီပေးရမလဲ?", OrderState.BROWSING
+
+            # Check for ADD TO CART
+            elif self.check_keyword(message, self.KEYWORDS["add_to_cart"]):
                 # Add to cart
                 return self._add_to_cart(user_id, session)
             else:
@@ -593,11 +618,18 @@ class OrderFlowManager:
         if self.check_keyword(message, self.KEYWORDS["view_cart"]):
             return self._show_cart(session), OrderState.CART_MANAGEMENT
 
-        # Add more items
-        elif self.check_keyword(message, self.KEYWORDS["add_more"]):
+        # Browse more / Add more items (same action)
+        elif self.check_keyword(message, self.KEYWORDS["browse"]) or self.check_keyword(message, self.KEYWORDS["add_more"]):
             session.state = OrderState.BROWSING
             self.db.save_session(user_id, session)
-            return "ကောင်းပါပြီ။ ဘယ်ဖုန်း ထပ်ထည့်ချင်ပါသလဲ? ပြောပြပါ။", OrderState.BROWSING
+            return "ကောင်းပါပြီ။ ဘယ်ဖုန်း ကြည့်ချင်ပါသလဲ? ပြောပြပါ။", OrderState.BROWSING
+
+        # Clear cart
+        elif self.check_keyword(message, self.KEYWORDS["clear_cart"]):
+            session.cart.clear()
+            session.state = OrderState.BROWSING
+            self.db.save_session(user_id, session)
+            return "✅ Cart ကို ရှင်းလင်းပြီးပါပြီ။\n\nဘာဝယ်ချင်ပါသလဲ? ပြောပြပါ။", OrderState.BROWSING
 
         # Checkout
         elif self.check_keyword(message, self.KEYWORDS["checkout"]):
@@ -620,12 +652,25 @@ class OrderFlowManager:
         """Handle checkout process"""
         session = self.db.load_session(user_id)
 
+        # Check for CANCEL at any stage
+        if self.check_keyword(message, self.KEYWORDS["cancel"]):
+            session.state = OrderState.BROWSING
+            session.pending_product = None
+            # Keep cart but reset checkout details
+            session.delivery_address = None
+            session.phone_number = None
+            session.payment_method = None
+            session.note = None
+            session.transaction_number = None
+            self.db.save_session(user_id, session)
+            return "❌ Order ကို ပယ်ဖျက်လိုက်ပါပြီ။ Cart ထဲမှာ ပစ္စည်းတွေ ရှိနေဆဲဖြစ်ပါတယ်။\n\nထပ်မံ ဝယ်ယူလိုပါက ပြန်လည် ပြောပြပေးပါ။", OrderState.BROWSING
+
         # Checkout confirmation
         if session.state == OrderState.CHECKOUT_CONFIRM:
             if self.check_keyword(message, self.KEYWORDS["confirm_order"]):
                 session.state = OrderState.ADDRESS_INPUT
                 self.db.save_session(user_id, session)
-                return "လိပ်စာ ပေးပို့ပါ။\n\n(ဥပမာ: No.45, Pyay Road, Yangon)", OrderState.ADDRESS_INPUT
+                return "လိပ်စာ ပေးပို့ပါ။\n\n(ဥပမာ: No.45, Pyay Road, Yangon)\n\n• 'CANCEL' - မတင်တော့ဘူး", OrderState.ADDRESS_INPUT
             else:
                 return self._show_checkout_confirmation(session), OrderState.CHECKOUT_CONFIRM
 
@@ -634,18 +679,18 @@ class OrderFlowManager:
             session.delivery_address = message.strip()
             session.state = OrderState.PHONE_INPUT
             self.db.save_session(user_id, session)
-            return "ဖုန်းနံပါတ် ပေးပို့ပါ။\n\n(ဥပမာ: 09771234567)", OrderState.PHONE_INPUT
+            return "ဖုန်းနံပါတ် ပေးပို့ပါ။\n\n(ဥပမာ: 09771234567)\n\n• 'CANCEL' - မတင်တော့ဘူး", OrderState.PHONE_INPUT
 
         # Phone input
         elif session.state == OrderState.PHONE_INPUT:
             phone = message.strip()
             if not self._validate_phone(phone):
-                return "ဖုန်းနံပါတ် မှားယွင်းနေပါသည်။ ထပ်မံ ရိုက်ထည့်ပေးပါ။\n\n(ဥပမာ: 09771234567)", OrderState.PHONE_INPUT
+                return "ဖုန်းနံပါတ် မှားယွင်းနေပါသည်။ ထပ်မံ ရိုက်ထည့်ပေးပါ။\n\n(ဥပမာ: 09771234567)\n\n• 'CANCEL' - မတင်တော့ဘူး", OrderState.PHONE_INPUT
 
             session.phone_number = phone
             session.state = OrderState.PAYMENT_SELECT
             self.db.save_session(user_id, session)
-            return self._show_payment_options(), OrderState.PAYMENT_SELECT
+            return self._show_payment_options(session), OrderState.PAYMENT_SELECT
 
         # Payment selection
         elif session.state == OrderState.PAYMENT_SELECT:
@@ -656,11 +701,11 @@ class OrderFlowManager:
             elif self.check_keyword(message, self.KEYWORDS["pay_cash"]):
                 session.payment_method = PaymentMethod.CASH.value
             else:
-                return self._show_payment_options(), OrderState.PAYMENT_SELECT
+                return self._show_payment_options(session), OrderState.PAYMENT_SELECT
 
             session.state = OrderState.NOTE_INPUT
             self.db.save_session(user_id, session)
-            return "မှတ်ချက် ရှိရင် ရိုက်ပါ။\n\nမရှိရင် 'SKIP' လို့ ရိုက်ပါ။", OrderState.NOTE_INPUT
+            return "မှတ်ချက် ရှိရင် ရိုက်ပါ။\n\nမရှိရင် 'SKIP' လို့ ရိုက်ပါ။\n\n• 'CANCEL' - မတင်တော့ဘူး", OrderState.NOTE_INPUT
 
         # Note input
         elif session.state == OrderState.NOTE_INPUT:
@@ -668,6 +713,26 @@ class OrderFlowManager:
                 session.note = None
             else:
                 session.note = message.strip()
+
+            # Check if digital payment - need transaction number
+            if session.payment_method in [PaymentMethod.KBZ.value, PaymentMethod.WAVE.value]:
+                session.state = OrderState.TRANSACTION_INPUT
+                self.db.save_session(user_id, session)
+                return f"""💳 {session.payment_method} ဖြင့် ငွေပေးချေမည်။
+
+Transaction Number ရိုက်ထည့်ပေးပါ။
+(ငွေလွှဲပြီးသည့်အခါ ရရှိသော နံပါတ်)
+
+• 'CANCEL' - မတင်တော့ဘူး""", OrderState.TRANSACTION_INPUT
+            else:
+                # Cash on delivery - no transaction needed, create order directly
+                order_number = self.db.create_order(user_id, session)
+                session.state = OrderState.ORDER_COMPLETE
+                return self._show_order_success(order_number, session), OrderState.ORDER_COMPLETE
+
+        # Transaction number input (for digital payments only)
+        elif session.state == OrderState.TRANSACTION_INPUT:
+            session.transaction_number = message.strip()
 
             # Create order
             order_number = self.db.create_order(user_id, session)
@@ -700,7 +765,8 @@ Guest အနေဖြင့် ဖုန်းတွေ ကြည့်လို
 🎨 {product.get('color', 'N/A')}
 💰 {product['price']:,} Ks
 
-Cart ထဲထည့်ဖို့ 'ADD TO CART' လို့ရိုက်ပေးပါ။"""
+• 'ADD TO CART' - Cart ထဲထည့်မယ်
+• 'CANCEL' - မလုပ်တော့ဘူး"""
 
     def _add_to_cart(self, user_id: int, session: OrderSession) -> Tuple[str, OrderState]:
         """Add pending product to cart"""
@@ -735,7 +801,7 @@ Cart ထဲထည့်ဖို့ 'ADD TO CART' လို့ရိုက်ပ
 
 ဘာဆက်လုပ်ချင်ပါသလဲ?
 • 'VIEW CART' - Cart ကြည့်မယ်
-• 'ADD MORE' - ထပ်ထည့်မယ်
+• 'BROWSE' - ဆက်ကြည့်မယ်
 • 'CHECKOUT' - Order တင်မယ်"""
 
         return response, OrderState.CART_MANAGEMENT
@@ -754,8 +820,9 @@ Cart ထဲထည့်ဖို့ 'ADD TO CART' လို့ရိုက်ပ
         cart_text += f"💰 စုစုပေါင်း: {session.get_cart_total():,} Ks\n\n"
 
         cart_text += """ဘာဆက်လုပ်ချင်ပါသလဲ?
-• 'ADD MORE' - ထပ်ထည့်မယ်
-• 'CHECKOUT' - Order တင်မယ်"""
+• 'BROWSE' - ဆက်ကြည့်မယ်
+• 'CHECKOUT' - Order တင်မယ်
+• 'CLEAR CART' - Cart ရှင်းမယ်"""
 
         return cart_text
 
@@ -764,8 +831,9 @@ Cart ထဲထည့်ဖို့ 'ADD TO CART' လို့ရိုက်ပ
         return """ဘာလုပ်ချင်ပါသလဲ?
 
 • 'VIEW CART' - Cart ကြည့်မယ်
-• 'ADD MORE' - ပစ္စည်း ထပ်ထည့်မယ်
+• 'BROWSE' - ပစ္စည်း ဆက်ကြည့်မယ်
 • 'CHECKOUT' - Order တင်မယ်
+• 'CLEAR CART' - Cart ရှင်းမယ်
 
 Keyword အတိအကျ ရိုက်ပေးပါ။"""
 
@@ -781,15 +849,31 @@ Keyword အတိအကျ ရိုက်ပေးပါ။"""
 ━━━━━━━━━━━━━━━━━━━━
 💰 စုစုပေါင်း: {session.get_cart_total():,} Ks
 
-Order တင်ဖို့ 'CONFIRM ORDER' လို့ ရိုက်ပေးပါ။"""
+• 'CONFIRM ORDER' - Order တင်မယ်
+• 'CANCEL' - မတင်တော့ဘူး"""
 
-    def _show_payment_options(self) -> str:
-        """Show payment method options"""
-        return """💳 Payment method ရွေးပါ:
+    def _show_payment_options(self, session: OrderSession) -> str:
+        """Show payment method options with order summary"""
+        # Build cart summary
+        cart_summary = ""
+        for item in session.cart:
+            cart_summary += f"• {item.brand} {item.model} - {item.get_subtotal():,} Ks\n"
+
+        return f"""📋 Order အချက်အလက်:
+
+{cart_summary}
+━━━━━━━━━━━━━━━━━━━━
+💰 စုစုပေါင်း: {session.get_cart_total():,} Ks
+
+📍 ပို့ရန်လိပ်စာ: {session.delivery_address}
+📞 ဖုန်း: {session.phone_number}
+
+💳 Payment method ရွေးပါ:
 
 • 'PAY KBZ' - KBZ Pay
 • 'PAY WAVE' - Wave Money
 • 'PAY CASH' - Cash on Delivery
+• 'CANCEL' - မတင်တော့ဘူး
 
 Keyword အတိအကျ ရိုက်ပေးပါ။"""
 
@@ -797,35 +881,43 @@ Keyword အတိအကျ ရိုက်ပေးပါ။"""
         """Show order success message"""
         payment_info = ""
 
+        # Show transaction number if provided (for digital payments)
+        transaction_info = ""
+        if session.transaction_number:
+            transaction_info = f"\n📱 Transaction Number: {session.transaction_number}"
+
         if session.payment_method == PaymentMethod.KBZ.value:
             payment_info = f"""
-📱 KBZ Pay သို့ ငွေလွှဲပါ:
-   ဖုန်း: 09-671698821
-   ပမာણ: {session.get_cart_total():,} Ks
-
-Screenshot ပြီးရင် ပို့ပေးပါ။"""
+💳 ငွေပေးချေမှု: KBZ Pay{transaction_info}
+✅ ငွေလွှဲပြီးပါပြီ။ စစ်ဆေးပြီးရင် ပို့ပေးပါမယ်။"""
 
         elif session.payment_method == PaymentMethod.WAVE.value:
             payment_info = f"""
-📱 Wave Money သို့ ငွေလွှဲပါ:
-   ဖုန်း: 09-671698821
-   ပမာণ: {session.get_cart_total():,} Ks
-
-Transaction ID မှတ်သားပါ။"""
+💳 ငွေပေးချေမှု: Wave Money{transaction_info}
+✅ ငွေလွှဲပြီးပါပြီ။ စစ်ဆေးပြီးရင် ပို့ပေးပါမယ်။"""
 
         elif session.payment_method == PaymentMethod.CASH.value:
-            payment_info = "\n💵 Cash on Delivery - ပို့သည့်အခါ ငွေပေးပါမည်။"
+            payment_info = "\n💳 ငွေပေးချေမှု: Cash on Delivery\n💵 ပို့သည့်အခါ ငွေပေးပါမည်။"
+
+        # Build cart summary
+        cart_summary = ""
+        for item in session.cart:
+            cart_summary += f"• {item.brand} {item.model} - {item.get_subtotal():,} Ks\n"
 
         return f"""✅ Order အောင်မြင်ပါပြီ!
 
 📝 Order Number: {order_number}
+
+{cart_summary}
+━━━━━━━━━━━━━━━━━━━━
 💰 စုစုပေါင်း: {session.get_cart_total():,} Ks
+
 📍 ပို့ရန်လိပ်စာ: {session.delivery_address}
 📞 ဖုန်း: {session.phone_number}
-💳 ငွေပေးချေမှု: {session.payment_method}
 {payment_info}
 
 ကျေးဇူးတင်ပါတယ်! မကြာမီ ဆက်သွယ်ပါမယ်။"""
+
 
     def _validate_phone(self, phone: str) -> bool:
         """Validate Myanmar phone number"""
