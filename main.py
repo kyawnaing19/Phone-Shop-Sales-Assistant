@@ -742,10 +742,10 @@ async def add_page(request: Request):
     return templates.TemplateResponse("add.html", {"request": request})
 
 @app.post("/add")
-async def add(brand: str = Form(...), model: str = Form(...), price: int = Form(...), qty: int = Form(...), specs: str = Form(...), best_for: str = Form(...)):
+async def add(brand: str = Form(...), model: str = Form(...), price: int = Form(...), qty: int = Form(...), specs: str = Form(...), best_for: str = Form(...), ram_storage: str = Form(...), color: str = Form(...)):
     conn = get_db_conn()
-    conn.execute("INSERT INTO products (brand, model, price, quantity, specifications, best_for) VALUES (?, ?, ?, ?, ?, ?)",
-                 (brand, model, price, qty, specs, best_for))
+    conn.execute("INSERT INTO products (brand, model, price, quantity, specifications, best_for, ram_storage, color) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                 (brand, model, price, qty, specs, best_for, ram_storage, color))
     conn.commit()
     conn.close()
     return RedirectResponse(url="/inventory", status_code=303)
