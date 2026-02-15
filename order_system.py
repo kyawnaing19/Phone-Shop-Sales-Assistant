@@ -11,10 +11,11 @@
 ║  ✓ Strict keyword confirmation system                                  ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 """
-
+import secrets
 import sqlite3
 import logging
 import json
+import string
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 from enum import Enum
@@ -291,6 +292,144 @@ class OrderDatabase:
 
             return dict(row) if row else None
 
+    def check_inventory_availability(self, order_id: int) -> Tuple[bool, List[str]]:
+        """
+        Check if sufficient inventory exists for an order
+        Returns: (is_available, error_messages)
+        """
+        try:
+            # Get order items
+            with self._get_connection() as conn:
+                order_items = conn.execute(
+                    "SELECT product_id, quantity FROM order_items WHERE order_id = ?",
+                    (order_id,)
+                ).fetchall()
+
+            # Check products inventory
+            with self._get_products_connection() as products_conn:
+                errors = []
+                for item in order_items:
+                    product = products_conn.execute(
+                        "SELECT id, brand, model, quantity FROM products WHERE id = ?",
+                        (item["product_id"],)
+                    ).fetchone()
+
+                    if not product:
+                        errors.append(f"Product ID {item['product_id']} not found")
+                    elif product["quantity"] < item["quantity"]:
+                        errors.append(
+                            f"{product['brand']} {product['model']}: "
+                            f"Need {item['quantity']}, only {product['quantity']} in stock"
+                        )
+
+                return (len(errors) == 0, errors)
+
+        except Exception as e:
+            logger.error(f"Error checking inventory: {e}")
+            return (False, [f"Error: {str(e)}"])
+
+    def deduct_inventory(self, order_id: int) -> bool:
+        """
+        Deduct order quantities from product inventory
+        Returns: True if successful, False otherwise
+        """
+        try:
+            # Get order items
+            with self._get_connection() as conn:
+                order_items = conn.execute(
+                    "SELECT product_id, quantity FROM order_items WHERE order_id = ?",
+                    (order_id,)
+                ).fetchall()
+
+            # Deduct from inventory
+            with self._get_products_connection() as products_conn:
+                for item in order_items:
+                    products_conn.execute(
+                        "UPDATE products SET quantity = quantity - ? WHERE id = ?",
+                        (item["quantity"], item["product_id"])
+                    )
+                products_conn.commit()
+
+            logger.info(f"✅ Inventory deducted for order {order_id}")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Error deducting inventory: {e}")
+            return False
+
+    def restore_inventory(self, order_id: int) -> bool:
+        """
+        Restore order quantities back to product inventory
+        Returns: True if successful, False otherwise
+        """
+        try:
+            # Get order items
+            with self._get_connection() as conn:
+                order_items = conn.execute(
+                    "SELECT product_id, quantity FROM order_items WHERE order_id = ?",
+                    (order_id,)
+                ).fetchall()
+
+            # Restore to inventory
+            with self._get_products_connection() as products_conn:
+                for item in order_items:
+                    products_conn.execute(
+                        "UPDATE products SET quantity = quantity + ? WHERE id = ?",
+                        (item["quantity"], item["product_id"])
+                    )
+                products_conn.commit()
+
+            logger.info(f"✅ Inventory restored for order {order_id}")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Error restoring inventory: {e}")
+            return False
+
+    def get_order_inventory_status(self, order_id: int) -> Dict:
+        """
+        Get detailed inventory status for an order
+        Shows current stock vs order quantity for each item
+        """
+        try:
+            # Get order items
+            with self._get_connection() as conn:
+                order_items = conn.execute(
+                    """
+                    SELECT oi.product_id, oi.brand, oi.model, oi.quantity as ordered_quantity
+                    FROM order_items oi
+                    WHERE oi.order_id = ?
+                    """,
+                    (order_id,)
+                ).fetchall()
+
+            # Get current stock for each product
+            with self._get_products_connection() as products_conn:
+                inventory_status = []
+                for item in order_items:
+                    product = products_conn.execute(
+                        "SELECT quantity FROM products WHERE id = ?",
+                        (item["product_id"],)
+                    ).fetchone()
+
+                    inventory_status.append({
+                        "product_id": item["product_id"],
+                        "brand": item["brand"],
+                        "model": item["model"],
+                        "ordered_quantity": item["ordered_quantity"],
+                        "current_stock": product["quantity"] if product else 0,
+                        "available": product and product["quantity"] >= item["ordered_quantity"]
+                    })
+
+                return {
+                    "order_id": order_id,
+                    "items": inventory_status,
+                    "all_available": all(item["available"] for item in inventory_status)
+                }
+
+        except Exception as e:
+            logger.error(f"Error getting inventory status: {e}")
+            return {"order_id": order_id, "items": [], "all_available": False, "error": str(e)}
     def get_product_by_partial_match(self, search_text: str) -> Optional[Dict]:
         """Search for product by partial match with smart model number extraction
 
@@ -457,8 +596,9 @@ class OrderDatabase:
             conn.commit()
 
     def generate_order_number(self) -> str:
-        """Generate unique order number"""
         date_str = datetime.now().strftime("%Y%m%d")
+        # Random စာသား ၄ လုံး ထည့်လိုက်မယ် (ဥပမာ - ORD-20260215-0006-A7B2)
+        random_suffix = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(4))
 
         with self._get_connection() as conn:
             cursor = conn.execute("""
@@ -467,7 +607,7 @@ class OrderDatabase:
             """, (f"ORD-{date_str}-%",))
             count = cursor.fetchone()[0]
 
-        return f"ORD-{date_str}-{count + 1:04d}"
+        return f"ORD-{date_str}-{count + 1:04d}-{random_suffix}"
 
     def create_order(self, user_id: int, session: OrderSession) -> str:
         """Create order from session"""
@@ -518,6 +658,32 @@ class OrderDatabase:
 
         logger.info(f"✅ Order created: {order_number}")
         return order_number
+
+    def get_order_with_items(self, order_id: int) -> Optional[Dict]:
+        """Get order details with all items"""
+        try:
+            with self._get_connection() as conn:
+                # Get order
+                cursor = conn.execute("""
+                    SELECT * FROM orders WHERE id = ?
+                """, (order_id,))
+                order = cursor.fetchone()
+
+                if not order:
+                    return None
+
+                order_dict = dict(order)
+
+                # Get items
+                cursor = conn.execute("""
+                    SELECT * FROM order_items WHERE order_id = ?
+                """, (order_id,))
+                order_dict['items'] = [dict(row) for row in cursor.fetchall()]
+
+                return order_dict
+        except Exception as e:
+            logger.error(f"Error fetching order with items: {e}")
+            return None
 
     def get_user_orders(self, user_id: int) -> List[Dict]:
         """Get all orders for a user"""

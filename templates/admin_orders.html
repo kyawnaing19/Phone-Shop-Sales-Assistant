@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .status-pending { background: #fef3c720; color: #f6e05e; border: 1px solid #f6e05e40; }
+    .status-confirmed { background: #dbeafe20; color: #63b3ed; border: 1px solid #63b3ed40; }
+    .status-processing { background: #e0e7ff20; color: #a3b1ff; border: 1px solid #a3b1ff40; }
+    .status-shipped { background: #fce7f320; color: #f687b3; border: 1px solid #f687b340; }
+    .status-delivered { background: #d1fae520; color: #68d391; border: 1px solid #68d39140; }
+    .status-cancelled { background: #fee2e220; color: #fc8181; border: 1px solid #fc818140; }
+
+    .order-card {
+        background: rgba(17, 24, 39, 0.7);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(75, 85, 99, 0.2);
+        transition: all 0.3s ease;
+    }
+    
+    .order-card:hover {
+        border-color: rgba(59, 130, 246, 0.5);
+        transform: translateY(-2px);
+    }
+</style>
+
+<div class="max-w-6xl mx-auto">
+    <div class="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+            <div class="p-3 bg-blue-600/20 rounded-lg">
+                <i class="fas fa-shopping-cart text-blue-400 text-2xl"></i>
+            </div>
+            <div>
+                <h2 class="text-2xl font-bold text-white">Order Management</h2>
+                <p class="text-gray-400">Track and process customer orders</p>
+            </div>
+        </div>
+
+        <div class="flex gap-3">
+            <a class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors border border-gray-700 flex items-center gap-2"
+               href="/inventory">
+                <i class="fas fa-home"></i> Home
+            </a>
+            <a class="btn-primary px-4 py-2 rounded-lg flex items-center gap-2" href="/manage">
+                <i class="fas fa-mobile-alt"></i> Products
+            </a>
+        </div>
+    </div>
+
+    <div class="space-y-6" id="ordersContainer">
+        <div class="flex flex-col items-center justify-center py-20 text-gray-400">
+            <i class="fas fa-spinner fa-spin text-3xl mb-4 text-blue-500"></i>
+            <p>Loading active orders...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    async function loadOrders() {
+    try {
+        const response = await fetch('/api/admin/orders', { credentials: 'include' });
+        if (!response.ok) throw new Error('Failed to fetch orders');
+        const data = await response.json();
+        const container = document.getElementById('ordersContainer');
+
+        if (data.success && data.orders.length > 0) {
+            // For each pending order, fetch stock status
+            const ordersWithStock = await Promise.all(data.orders.map(async order => {
+                if (order.status === 'pending') {
+                    try {
+                        const stockResponse = await fetch(`/api/admin/orders/${order.id}/stock-check`, { credentials: 'include' });
+                        const stockData = await stockResponse.json();
+                        if (stockData.success) {
+                            order.stockInfo = stockData.items;
+                        }
+                    } catch (e) {
+                        console.error('Stock check failed:', e);
+                    }
+                }
+                return order;
+            }));
+
+            container.innerHTML = ordersWithStock.map(order => `
+                <div class="order-card rounded-xl p-6">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 pb-4 border-b border-gray-800">
+                        <div>
+                            <div class="flex items-center gap-3 mb-1">
+                                <span class="text-xl font-bold text-white"><i class="fas fa-receipt text-blue-400 mr-2"></i>${order.order_number}</span>
+                                <span class="status-pending px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider status-${order.status}">
+                                    ${order.status}
+                                </span>
+                            </div>
+                            <div class="text-sm text-gray-400">
+                                <i class="fas fa-user-circle mr-1"></i> ${order.username || 'Unknown User'}
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-xs text-gray-500 uppercase">Total Amount</div>
+                            <div class="text-2xl font-bold text-blue-400">${order.total_amount.toLocaleString()} MMK</div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                        <div class="p-3 bg-gray-900/40 rounded-lg">
+                            <div class="text-xs text-gray-500 mb-1 flex items-center gap-1">
+                                <i class="fas fa-calendar"></i> Date
+                            </div>
+                            <div class="text-sm text-gray-200 font-medium">${new Date(order.created_at).toLocaleDateString()}</div>
+                        </div>
+                        <div class="p-3 bg-gray-900/40 rounded-lg">
+                            <div class="text-xs text-gray-500 mb-1 flex items-center gap-1">
+                                <i class="fas fa-phone"></i> Phone
+                            </div>
+                            <div class="text-sm text-gray-200 font-medium">${order.phone_number}</div>
+                        </div>
+                        <div class="p-3 bg-gray-900/40 rounded-lg">
+                            <div class="text-xs text-gray-500 mb-1 flex items-center gap-1">
+                                <i class="fas fa-credit-card"></i> Payment
+                            </div>
+                            <div class="text-sm text-gray-200 font-medium">${order.payment_method}</div>
+                        </div>
+                        <div class="p-3 bg-gray-900/40 rounded-lg">
+                            <div class="text-xs text-gray-500 mb-1 flex items-center gap-1">
+                                <i class="fas fa-map-marker-alt"></i> Address
+                            </div>
+                            <div class="text-sm text-gray-200 font-medium truncate" title="${order.delivery_address}">${order.delivery_address}</div>
+                        </div>
+                    </div>
+
+                    ${order.transaction_number ? `
+                        <div class="mb-4 p-3 bg-blue-900/20 border border-blue-800/30 rounded-lg text-sm">
+                            <span class="text-blue-400 font-bold"><i class="fas fa-exchange-alt mr-2"></i>Transaction:</span>
+                            <span class="text-gray-200 ml-2">${order.transaction_number}</span>
+                        </div>
+                    ` : ''}
+
+                    ${order.note ? `
+                        <div class="mb-4 p-3 bg-gray-800/50 rounded-lg text-sm italic text-gray-400">
+                            <i class="fas fa-sticky-note mr-2"></i>Note: ${order.note}
+                        </div>
+                    ` : ''}
+
+                    <!-- ENHANCED ORDER ITEMS WITH STOCK INFO -->
+                    <div class="bg-black/20 rounded-xl p-4 mb-6">
+                        <h4 class="text-sm font-bold text-gray-400 mb-3 uppercase tracking-widest flex items-center gap-2">
+                            <i class="fas fa-box-open text-blue-500"></i> Order Items
+                        </h4>
+                        <div class="space-y-2">
+                            ${order.items.map((item, idx) => {
+                                // Get stock info for this item
+                                const stockInfo = order.stockInfo ? order.stockInfo.find(s => s.product_id === item.product_id) : null;
+
+                                let stockBadge = '';
+                                let stockWarning = '';
+                                let borderColor = 'border-gray-800';
+
+                                if (stockInfo && order.status === 'pending') {
+                                    if (stockInfo.status === 'ok') {
+                                        stockBadge = `<span class="px-2 py-0.5 bg-green-600/20 text-green-400 text-xs rounded border border-green-600/30 flex items-center gap-1"><i class="fas fa-check-circle"></i> Stock: ${stockInfo.current_stock}</span>`;
+                                        borderColor = 'border-green-700/30';
+                                    } else if (stockInfo.status === 'low') {
+                                        stockBadge = `<span class="px-2 py-0.5 bg-yellow-600/20 text-yellow-400 text-xs rounded border border-yellow-600/30 flex items-center gap-1"><i class="fas fa-exclamation-triangle"></i> Low Stock: ${stockInfo.current_stock}</span>`;
+                                        stockWarning = `<div class="mt-2 text-xs text-yellow-400"><i class="fas fa-info-circle"></i> Need ${stockInfo.ordered_qty}, only ${stockInfo.current_stock} available</div>`;
+                                        borderColor = 'border-yellow-700/50';
+                                    } else {
+                                        stockBadge = `<span class="px-2 py-0.5 bg-red-600/20 text-red-400 text-xs rounded border border-red-600/30 flex items-center gap-1"><i class="fas fa-times-circle"></i> Out of Stock</span>`;
+                                        stockWarning = `<div class="mt-2 text-xs text-red-400"><i class="fas fa-exclamation-circle"></i> Cannot fulfill - no stock available</div>`;
+                                        borderColor = 'border-red-700/50';
+                                    }
+                                }
+
+                                return `
+                                    <div class="flex justify-between items-start p-3 bg-gray-900/60 rounded-lg border ${borderColor}">
+                                        <div class="flex-1">
+                                            <div class="flex items-center gap-2 mb-1">
+                                                <div class="text-white font-semibold">${item.brand} ${item.model}</div>
+                                                ${stockBadge}
+                                            </div>
+                                            <div class="text-xs text-gray-500">${item.ram_storage} • ${item.color}</div>
+                                            ${stockWarning}
+                                        </div>
+                                        <div class="text-right">
+                                            <div class="text-blue-400 font-bold">${item.price.toLocaleString()} Ks</div>
+                                            <div class="text-xs text-gray-500">Qty: ${item.quantity}</div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+
+                    <div class="flex flex-wrap gap-2 pt-4 border-t border-gray-800">
+                        ${order.status === 'pending' ? `
+                            <button onclick="updateStatus(${order.id}, 'confirmed')" class="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm font-bold transition-all flex items-center gap-2">
+                                <i class="fas fa-check"></i> Confirm
+                            </button>
+                        ` : ''}
+                        ${order.status === 'confirmed' ? `
+                            <button onclick="updateStatus(${order.id}, 'processing')" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold transition-all flex items-center gap-2">
+                                <i class="fas fa-cog fa-spin"></i> Process
+                            </button>
+                        ` : ''}
+                        ${order.status === 'processing' ? `
+                            <button onclick="updateStatus(${order.id}, 'shipped')" class="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-bold transition-all flex items-center gap-2">
+                                <i class="fas fa-shipping-fast"></i> Ship
+                            </button>
+                        ` : ''}
+                        ${order.status === 'shipped' ? `
+                            <button onclick="updateStatus(${order.id}, 'delivered')" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-bold transition-all flex items-center gap-2">
+                                <i class="fas fa-check-double"></i> Delivered
+                            </button>
+                        ` : ''}
+                        ${order.status !== 'cancelled' && order.status !== 'delivered' ? `
+                            <button onclick="updateStatus(${order.id}, 'cancelled')" class="px-4 py-2 bg-gray-700 hover:bg-red-900 text-gray-300 hover:text-white rounded-lg text-sm font-bold transition-all flex items-center gap-2">
+                                <i class="fas fa-times"></i> Cancel
+                            </button>
+                        ` : ''}
+                        <div class="flex-grow"></div>
+                        <button onclick="deleteOrder(${order.id})" class="px-4 py-2 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white border border-red-600/30 rounded-lg text-sm font-bold transition-all flex items-center gap-2">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            container.innerHTML = `
+                <div class="text-center py-20 bg-gray-900/50 rounded-2xl border border-gray-800">
+                    <i class="fas fa-inbox text-5xl text-gray-700 mb-4"></i>
+                    <h3 class="text-xl font-bold text-white">No Orders Found</h3>
+                    <p class="text-gray-500">Active customer orders will appear here.</p>
+                </div>
+            `;
+        }
+    } catch (error) {
+        container.innerHTML = `<div class="p-6 bg-red-900/20 text-red-400 rounded-xl border border-red-800/30 text-center">${error.message}</div>`;
+    }
+}
+
+async function updateStatus(orderId, newStatus) {
+            // Special confirmation for confirming orders (inventory deduction)
+            if (newStatus === 'confirmed') {
+                const confirmMsg =
+                    `⚠️ CONFIRM ORDER\n\n` +
+                    `This will:\n` +
+                    `• Update order status to CONFIRMED\n` +
+                    `• DEDUCT quantities from inventory\n` +
+                    `• Cannot be undone without cancelling\n\n` +
+                    `Make sure stock is available!\n\n` +
+                    `Continue?`;
+
+                if (!confirm(confirmMsg)) return;
+            }
+
+            // Special confirmation for cancelling confirmed orders (inventory restoration)
+            if (newStatus === 'cancelled') {
+                const confirmMsg =
+                    `⚠️ CANCEL ORDER\n\n` +
+                    `This will:\n` +
+                    `• Update order status to CANCELLED\n` +
+                    `• RESTORE quantities to inventory (if order was confirmed)\n\n` +
+                    `Continue?`;
+
+                if (!confirm(confirmMsg)) return;
+            }
+
+            try {
+                const formData = new FormData();
+                formData.append('status', newStatus);
+
+                const response = await fetch(`/api/admin/orders/${orderId}/status`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    let message = 'Status updated successfully!';
+
+                    // Add inventory update notification
+                    if (data.inventory_updated) {
+                        if (newStatus === 'confirmed') {
+                            message += '\n✅ Inventory quantities have been deducted.';
+                        } else if (newStatus === 'cancelled') {
+                            message += '\n✅ Inventory quantities have been restored.';
+                        }
+                    }
+
+                    alert(message);
+                    loadOrders(); // Reload orders
+                } else {
+                    // Handle insufficient stock error
+                    if (data.details && Array.isArray(data.details)) {
+                        alert(
+                            '❌ ' + data.message + '\n\n' +
+                            'Issues:\n' + data.details.join('\n')
+                        );
+                    } else {
+                        alert('Failed to update status: ' + data.message);
+                    }
+                }
+            } catch (error) {
+                alert('Error updating status: ' + error.message);
+            }
+        }
+
+    async function deleteOrder(orderId) {
+        if (!confirm('Are you sure you want to delete this order?')) return;
+        try {
+            const response = await fetch(`/api/admin/orders/${orderId}/delete`, {
+                method: 'POST',
+                credentials: 'include'
+            });
+            const data = await response.json();
+            if (data.success) { loadOrders(); } else { alert('Error: ' + data.message); }
+        } catch (error) { alert('Error deleting order: ' + error.message); }
+    }
+
+    loadOrders();
+</script>
+{% endblock %}

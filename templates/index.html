@@ -508,445 +508,752 @@
                 max-width: calc(100vw - 40px);
             }
         }
+
+        /* Edit Profile Modal Styles */
+        .gender-edit-option {
+            position: relative;
+            cursor: pointer;
+        }
+
+        .gender-edit-option input {
+            position: absolute;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .gender-edit-label {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 14px 8px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            background: #f8fafc;
+            color: #64748b;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .gender-edit-label i {
+            font-size: 20px;
+            margin-bottom: 6px;
+        }
+
+        .gender-edit-option input:checked + .gender-edit-label {
+            border-color: #3b82f6;
+            background: #eff6ff;
+            color: #1d4ed8;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
     </style>
 </head>
 <body>
-    <!-- Top Navigation Bar -->
-    <div class="top-navbar">
-        <div class="navbar-brand">
-            <i class="fas fa-robot"></i>
-            <span>Myanmar Mobile AI</span>
-        </div>
-        <div class="navbar-actions" id="navbarActions">
-            <!-- Will be populated by JavaScript -->
-        </div>
+<!-- Top Navigation Bar -->
+<div class="top-navbar">
+    <div class="navbar-brand">
+        <i class="fas fa-robot"></i>
+        <span>Myanmar Mobile AI</span>
     </div>
+    <div class="navbar-actions" id="navbarActions">
+        <!-- Will be populated by JavaScript -->
+        <button onclick="showOrderHistory()" class="user-info-btn" title="Order History">
+            <i class="fas fa-shopping-bag"></i>
+            <span>Orders</span>
+        </button>
+    </div>
+</div>
 
-    <div class="modal-overlay" id="orderModal">
-    <div class="modal-content" style="max-width: 500px;">
+<!--<div class="modal-overlay" id="orderModal">-->
+<!--    <div class="modal-content" style="max-width: 500px;">-->
+<!--        <div class="modal-header">-->
+<!--            <h3>My Order History</h3>-->
+<!--            <button class="modal-close" onclick="closeOrderModal()">-->
+<!--                <i class="fas fa-times"></i>-->
+<!--            </button>-->
+<!--        </div>-->
+<!--        <div id="orderList" class="profile-info" style="max-height: 400px; overflow-y: auto;">-->
+<!--        </div>-->
+<!--    </div>-->
+<!--</div>-->
+
+<!-- Order History Modal -->
+<div id="orderModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 700px; max-height: 80vh; overflow-y: auto;">
         <div class="modal-header">
-            <h3>My Order History</h3>
+            <h3><i class="fas fa-shopping-bag"></i> My Orders</h3>
             <button class="modal-close" onclick="closeOrderModal()">
                 <i class="fas fa-times"></i>
             </button>
         </div>
-        <div id="orderList" class="profile-info" style="max-height: 400px; overflow-y: auto;">
-            </div>
+        <div id="orderList"></div>
     </div>
 </div>
 
-    <!-- Profile Modal -->
-    <div class="modal-overlay" id="profileModal">
-        <div class="modal-content">
+<!-- Profile Modal -->
+<div class="modal-overlay" id="profileModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Profile Information</h3>
+            <button class="modal-close" onclick="closeProfileModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="profile-info" id="profileInfo">
+            <!-- Profile content will be populated by JavaScript -->
+        </div>
+    </div>
+</div>
+
+<!-- Edit Profile Modal -->
+    <div id="editProfileModal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 500px;">
             <div class="modal-header">
-                <h3>Profile Information</h3>
-                <button class="modal-close" onclick="closeProfileModal()">
+                <h3><i class="fas fa-user-edit"></i> Edit Profile</h3>
+                <button class="modal-close" onclick="closeEditProfileModal()">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
-            <div class="profile-info" id="profileInfo">
-                <!-- Profile content will be populated by JavaScript -->
+
+            <form id="editProfileForm" style="display: flex; flex-direction: column; gap: 20px;">
+                <!-- Username (Read-only) -->
+                <div>
+                    <label style="display: block; font-size: 12px; color: #64748b; margin-bottom: 8px; font-weight: 600;">
+                        <i class="fas fa-user"></i> USERNAME (Cannot be changed)
+                    </label>
+                    <input
+                        type="text"
+                        id="editUsername"
+                        readonly
+                        style="width: 100%; padding: 12px 16px; border: 2px solid #e2e8f0; border-radius: 8px; background: #f1f5f9; color: #64748b; font-weight: 600;"
+                    />
+                </div>
+
+                <!-- Age -->
+                <div>
+                    <label style="display: block; font-size: 12px; color: #64748b; margin-bottom: 8px; font-weight: 600;">
+                        <i class="fas fa-birthday-cake"></i> AGE
+                    </label>
+                    <input
+                        type="number"
+                        id="editAge"
+                        min="13"
+                        max="100"
+                        required
+                        style="width: 100%; padding: 12px 16px; border: 2px solid #e2e8f0; border-radius: 8px; background: #f8fafc; transition: all 0.2s;"
+                        onfocus="this.style.borderColor='#3b82f6'; this.style.background='white';"
+                        onblur="this.style.borderColor='#e2e8f0'; this.style.background='#f8fafc';"
+                    />
+                </div>
+
+                <!-- Gender -->
+                <div>
+                    <label style="display: block; font-size: 12px; color: #64748b; margin-bottom: 8px; font-weight: 600;">
+                        <i class="fas fa-venus-mars"></i> GENDER
+                    </label>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+                        <label class="gender-edit-option">
+                            <input type="radio" name="editGender" value="male" required>
+                            <span class="gender-edit-label">
+                                <i class="fas fa-mars"></i> Male
+                            </span>
+                        </label>
+                        <label class="gender-edit-option">
+                            <input type="radio" name="editGender" value="female" required>
+                            <span class="gender-edit-label">
+                                <i class="fas fa-venus"></i> Female
+                            </span>
+                        </label>
+                        <label class="gender-edit-option">
+                            <input type="radio" name="editGender" value="other" required>
+                            <span class="gender-edit-label">
+                                <i class="fas fa-genderless"></i> Other
+                            </span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Password Change Section (Optional) -->
+                <div style="border-top: 2px solid #e2e8f0; padding-top: 20px;">
+                    <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px; cursor: pointer;">
+                        <input
+                            type="checkbox"
+                            id="changePasswordToggle"
+                            style="width: 18px; height: 18px; cursor: pointer;"
+                            onchange="togglePasswordChange()"
+                        />
+                        <span style="font-size: 14px; font-weight: 600; color: #1e293b;">
+                            <i class="fas fa-key"></i> Change Password
+                        </span>
+                    </label>
+
+                    <div id="passwordChangeSection" style="display: none; animation: fadeIn 0.3s ease;">
+                        <div style="margin-bottom: 16px;">
+                            <label style="display: block; font-size: 12px; color: #64748b; margin-bottom: 8px; font-weight: 600;">
+                                <i class="fas fa-lock"></i> CURRENT PASSWORD
+                            </label>
+                            <input
+                                type="password"
+                                id="editCurrentPassword"
+                                style="width: 100%; padding: 12px 16px; border: 2px solid #e2e8f0; border-radius: 8px; background: #f8fafc;"
+                                onfocus="this.style.borderColor='#3b82f6'; this.style.background='white';"
+                                onblur="this.style.borderColor='#e2e8f0'; this.style.background='#f8fafc';"
+                            />
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 12px; color: #64748b; margin-bottom: 8px; font-weight: 600;">
+                                <i class="fas fa-lock"></i> NEW PASSWORD (min 6 characters)
+                            </label>
+                            <input
+                                type="password"
+                                id="editNewPassword"
+                                minlength="6"
+                                style="width: 100%; padding: 12px 16px; border: 2px solid #e2e8f0; border-radius: 8px; background: #f8fafc;"
+                                onfocus="this.style.borderColor='#3b82f6'; this.style.background='white';"
+                                onblur="this.style.borderColor='#e2e8f0'; this.style.background='#f8fafc';"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <button
+                    type="submit"
+                    style="width: 100%; padding: 14px; background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.3s;"
+                    onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 25px rgba(59, 130, 246, 0.4)';"
+                    onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none';"
+                >
+                    <i class="fas fa-save"></i> Save Changes
+                </button>
+            </form>
+        </div>
+    </div>
+
+<!-- Delete Account Confirmation Modal -->
+    <div id="deleteAccountModal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 450px;">
+            <div class="modal-header" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; border-radius: 16px 16px 0 0; margin: -24px -24px 0 -24px; padding: 20px 24px;">
+                <h3 style="display: flex; align-items: center; gap: 10px; margin: 0;">
+                    <i class="fas fa-exclamation-triangle"></i> Delete Account
+                </h3>
+                <button class="modal-close" onclick="closeDeleteAccountModal()" style="background: rgba(255,255,255,0.2); color: white;">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div style="padding: 24px 0 0 0;">
+                <!-- Warning Message -->
+                <div style="background: #fef2f2; border: 2px solid #fecaca; border-radius: 12px; padding: 16px; margin-bottom: 20px;">
+                    <div style="display: flex; gap: 12px;">
+                        <div style="flex-shrink: 0;">
+                            <i class="fas fa-exclamation-circle" style="color: #ef4444; font-size: 24px;"></i>
+                        </div>
+                        <div>
+                            <h4 style="color: #991b1b; font-weight: 700; margin-bottom: 8px; font-size: 16px;">
+                                Warning: This action cannot be undone!
+                            </h4>
+                            <ul style="color: #7f1d1d; font-size: 14px; line-height: 1.6; margin: 0; padding-left: 20px;">
+                                <li>Your account will be permanently deleted</li>
+                                <li>All your chat history will be removed</li>
+                                <li>All your orders will be deleted</li>
+                                <li>You cannot recover this account</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Username Display -->
+                <div style="background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 20px; text-align: center;">
+                    <div style="font-size: 12px; color: #64748b; margin-bottom: 4px; font-weight: 600;">
+                        DELETING ACCOUNT
+                    </div>
+                    <div style="font-size: 18px; color: #1e293b; font-weight: 700;" id="deleteAccountUsername">
+                        <!-- Username will be inserted here -->
+                    </div>
+                </div>
+
+                <!-- Password Confirmation Form -->
+                <form id="deleteAccountForm" style="display: flex; flex-direction: column; gap: 16px;">
+                    <div>
+                        <label style="display: block; font-size: 13px; color: #1e293b; margin-bottom: 8px; font-weight: 600;">
+                            <i class="fas fa-lock"></i> Confirm your password to delete account
+                        </label>
+                        <input
+                            type="password"
+                            id="deleteAccountPassword"
+                            placeholder="Enter your current password"
+                            required
+                            autocomplete="current-password"
+                            style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 8px; background: white; font-size: 15px; transition: all 0.2s;"
+                            onfocus="this.style.borderColor='#ef4444'; this.style.boxShadow='0 0 0 4px rgba(239, 68, 68, 0.1)';"
+                            onblur="this.style.borderColor='#e2e8f0'; this.style.boxShadow='none';"
+                        />
+                    </div>
+
+                    <!-- Confirmation Checkbox -->
+                    <label style="display: flex; align-items: start; gap: 10px; cursor: pointer; padding: 12px; background: #fef2f2; border-radius: 8px; border: 2px solid #fecaca;">
+                        <input
+                            type="checkbox"
+                            id="deleteConfirmCheckbox"
+                            required
+                            style="margin-top: 3px; width: 18px; height: 18px; cursor: pointer; flex-shrink: 0;"
+                        />
+                        <span style="font-size: 13px; color: #7f1d1d; font-weight: 600; line-height: 1.5;">
+                            I understand this action is permanent and cannot be undone
+                        </span>
+                    </label>
+
+                    <!-- Action Buttons -->
+                    <div style="display: flex; gap: 10px; margin-top: 8px;">
+                        <button
+                            type="button"
+                            onclick="closeDeleteAccountModal()"
+                            style="flex: 1; padding: 14px; background: #f1f5f9; color: #475569; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.2s;"
+                            onmouseover="this.style.background='#e2e8f0';"
+                            onmouseout="this.style.background='#f1f5f9';"
+                        >
+                            <i class="fas fa-times"></i> Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            style="flex: 1; padding: 14px; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.3s;"
+                            onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 25px rgba(239, 68, 68, 0.4)';"
+                            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none';"
+                        >
+                            <i class="fas fa-trash-alt"></i> Delete Account
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
 
-    <!-- Chatbot Widget -->
-    <div class="chatbot-widget">
-        <!-- Chat Container -->
-        <div class="chat-container" id="chatContainer">
-            <div class="chat-header">
-                <div class="chat-avatar">
-                    <i class="fas fa-robot"></i>
-                </div>
-                <div class="chat-header-info">
-                    <h3>AI Assistant</h3>
-                    <p><span class="chat-status"></span> Online</p>
-                </div>
-                <button class="close-chat" id="closeChat">
-                    <i class="fas fa-times"></i>
-                </button>
+<!-- Chatbot Widget -->
+<div class="chatbot-widget">
+    <!-- Chat Container -->
+    <div class="chat-container" id="chatContainer">
+        <div class="chat-header">
+            <div class="chat-avatar">
+                <i class="fas fa-robot"></i>
             </div>
-
-            <div class="chat-messages" id="chatMessages">
-                <!-- Messages will appear here -->
+            <div class="chat-header-info">
+                <h3>AI Assistant</h3>
+                <p><span class="chat-status"></span> Online</p>
             </div>
+            <button class="close-chat" id="closeChat">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
 
-            <div class="chat-controls">
-                <div class="model-selector">
-                    <select id="modelSelect">
-                        <option value="mistral-large">Mistral Large</option>
-                        <option value="llama-3">Llama 3.1 405B</option>
-                    </select>
-                </div>
-                <div class="chat-input-area">
-                    <textarea 
-                        id="userInput" 
-                        class="chat-input" 
-                        placeholder="Type your message..."
-                        rows="1"
+        <div class="chat-messages" id="chatMessages">
+            <!-- Messages will appear here -->
+        </div>
+
+        <div class="chat-controls">
+            <div class="model-selector">
+                <select id="modelSelect">
+                    <option value="mistral-large">Mistral Large</option>
+                    <option value="llama-3">Llama 3.1 405B</option>
+                </select>
+            </div>
+            <div class="chat-input-area">
+                    <textarea
+                            id="userInput"
+                            class="chat-input"
+                            placeholder="Type your message..."
+                            rows="1"
                     ></textarea>
-                    <button class="send-button" id="sendButton">
-                        <i class="fas fa-paper-plane"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Chatbot Icon -->
-        <div class="chatbot-icon" id="chatbotIcon">
-            <i class="fas fa-comments"></i>
-        </div>
-
-        <!-- Notification -->
-        <div class="notification" id="notification">
-            <div class="notification-icon">
-                <i class="fas fa-info-circle"></i>
-            </div>
-            <div class="notification-content">
-                <h4>Need Help?</h4>
-                <p>Click the chat icon to talk with our AI assistant!</p>
+                <button class="send-button" id="sendButton">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
             </div>
         </div>
     </div>
 
-    <script>
-const chatbotIcon = document.getElementById('chatbotIcon');
-const chatContainer = document.getElementById('chatContainer');
-const closeChat = document.getElementById('closeChat');
-const chatMessages = document.getElementById('chatMessages');
-const userInput = document.getElementById('userInput');
-const sendButton = document.getElementById('sendButton');
-const modelSelect = document.getElementById('modelSelect');
-const notification = document.getElementById('notification');
-const navbarActions = document.getElementById('navbarActions');
-const profileModal = document.getElementById('profileModal');
+    <!-- Chatbot Icon -->
+    <div class="chatbot-icon" id="chatbotIcon">
+        <i class="fas fa-comments"></i>
+    </div>
 
-let chatOpen = false;
-let chatHistory = [];
-let currentUser = null;
-let currentSessionId = null;
-
-// Check authentication and update navbar
-async function checkAuth() {
-    try {
-        const response = await fetch('/api/me', {
-            credentials: 'include'
-        });
-        
-        if (response.ok) {
-            currentUser = await response.json();
-            updateNavbar();
-            loadChatHistory();
-        } else {
-            currentUser = null;
-            updateNavbar();
-            // Show welcome message for non-authenticated users
-            addMessage('မင်္ဂလာပါ! ကျွန်တော်က Myanmar Mobile Sales AI ပါ။ ဖုန်းအမျိုးအစားများ၊ ဈေးနှုန်းများနှင့် အချက်အလက်များကို မေးမြန်းနိုင်ပါတယ်ဗျာ။ 🙏', 'bot', false);
-        }
-    } catch (error) {
-        console.error('Auth check error:', error);
-        currentUser = null;
-        updateNavbar();
-        addMessage('မင်္ဂလာပါ! ကျွန်တော်က Myanmar Mobile Sales AI ပါ။ ဖုန်းအမျိုးအစားများ၊ ဈေးနှုန်းများနှင့် အချက်အလက်များကို မေးမြန်းနိုင်ပါတယ်ဗျာ။ 🙏', 'bot', false);
-    }
-}
-
-// Update navbar based on authentication
-function updateNavbar() {
-   if (currentUser) {
-        navbarActions.innerHTML = `
-            <button class="user-info-btn" onclick="showOrderHistory()" style="background: #e0f2fe; color: #0369a1;">
-                <i class="fas fa-shopping-bag"></i>
-                <span>Orders</span>
-            </button>
-
-            <button class="user-info-btn" onclick="showProfileModal()">
-                <i class="fas fa-user-circle"></i>
-                <span>${currentUser.username}</span>
-            </button>
-            <button class="logout-btn" onclick="logout()">
-                <i class="fas fa-sign-out-alt"></i>
-                <span>Logout</span>
-            </button>
-        `;
-    } else {
-        navbarActions.innerHTML = `
-            <button class="user-info-btn" onclick="window.location.href='/login'">
-                <i class="fas fa-sign-in-alt"></i>
-                <span>Login</span>
-            </button>
-            <button class="logout-btn" onclick="window.location.href='/register'" style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);">
-                <i class="fas fa-user-plus"></i>
-                <span>Register</span>
-            </button>
-        `;
-    }
-}
-
-// Show profile modal
-function showProfileModal() {
-    if (!currentUser) return;
-
-    const genderDisplay = currentUser.gender === 'male' ? 'Male' :
-                         currentUser.gender === 'female' ? 'Female' : 'Other';
-
-    const createdDate = new Date(currentUser.created_at).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-    });
-
-    document.getElementById('profileInfo').innerHTML = `
-        <div class="profile-item">
-            <i class="fas fa-user"></i>
-            <div>
-                <div class="profile-item-label">Username</div>
-                <div class="profile-item-value">${currentUser.username}</div>
-            </div>
+    <!-- Notification -->
+    <div class="notification" id="notification">
+        <div class="notification-icon">
+            <i class="fas fa-info-circle"></i>
         </div>
-        <div class="profile-item">
-            <i class="fas fa-birthday-cake"></i>
-            <div>
-                <div class="profile-item-label">Age</div>
-                <div class="profile-item-value">${currentUser.age} years old</div>
-            </div>
+        <div class="notification-content">
+            <h4>Need Help?</h4>
+            <p>Click the chat icon to talk with our AI assistant!</p>
         </div>
-        <div class="profile-item">
-            <i class="fas fa-venus-mars"></i>
-            <div>
-                <div class="profile-item-label">Gender</div>
-                <div class="profile-item-value">${genderDisplay}</div>
-            </div>
-        </div>
-        <div class="profile-item">
-            <i class="fas fa-calendar-alt"></i>
-            <div>
-                <div class="profile-item-label">Member Since</div>
-                <div class="profile-item-value">${createdDate}</div>
-            </div>
-        </div>
-    `;
+    </div>
+</div>
 
-    profileModal.classList.add('active');
-}
+<script>
+    const chatbotIcon = document.getElementById('chatbotIcon');
+    const chatContainer = document.getElementById('chatContainer');
+    const closeChat = document.getElementById('closeChat');
+    const chatMessages = document.getElementById('chatMessages');
+    const userInput = document.getElementById('userInput');
+    const sendButton = document.getElementById('sendButton');
+    const modelSelect = document.getElementById('modelSelect');
+    const notification = document.getElementById('notification');
+    const navbarActions = document.getElementById('navbarActions');
+    const profileModal = document.getElementById('profileModal');
 
-// Close profile modal
-function closeProfileModal() {
-    profileModal.classList.remove('active');
-}
+    let chatOpen = false;
+    let chatHistory = [];
+    let currentUser = null;
+    let currentSessionId = null;
 
-// Close modal when clicking outside
-profileModal.addEventListener('click', (e) => {
-    if (e.target === profileModal) {
-        closeProfileModal();
-    }
-});
+    // Check authentication and update navbar
+    async function checkAuth() {
+        try {
+            const response = await fetch('/api/me', {
+                credentials: 'include'
+            });
 
-// Logout function
-async function logout() {
-    try {
-        const response = await fetch('/api/logout', {
-            method: 'POST',
-            credentials: 'include'
-        });
-
-        if (response.ok) {
-            window.location.href = '/login';
-        }
-    } catch (error) {
-        console.error('Logout error:', error);
-        alert('Logout failed. Please try again.');
-    }
-}
-
-// Load chat history for current user
-async function loadChatHistory() {
-    if (!currentUser) {
-        addMessage('မင်္ဂလာပါ! ကျွန်တော်က Myanmar Mobile Sales AI ပါ။ ဖုန်းအမျိုးအစားများ၊ ဈေးနှုန်းများနှင့် အချက်အလက်များကို မေးမြန်းနိုင်ပါတယ်ဗျာ။ 🙏', 'bot');
-        return;
-    }
-
-    try {
-        const response = await fetch('/api/current-session', {
-            credentials: 'include'
-        });
-
-        if (response.ok) {
-            const data = await response.json();
-            currentSessionId = data.session_id;
-
-            // Clear chat messages
-            chatMessages.innerHTML = '';
-
-            // Load messages from history
-            if (data.messages && data.messages.length > 0) {
-                data.messages.forEach(msg => {
-                    addMessage(msg.content, msg.role === 'user' ? 'user' : 'bot', false);
-
-                    // Update chatHistory for context
-                    chatHistory.push({
-                        role: msg.role,
-                        content: msg.content
-                    });
-                });
+            if (response.ok) {
+                currentUser = await response.json();
+                updateNavbar();
+                loadChatHistory();
             } else {
-                // Show welcome message
+                currentUser = null;
+                updateNavbar();
+                // Show welcome message for non-authenticated users
                 addMessage('မင်္ဂလာပါ! ကျွန်တော်က Myanmar Mobile Sales AI ပါ။ ဖုန်းအမျိုးအစားများ၊ ဈေးနှုန်းများနှင့် အချက်အလက်များကို မေးမြန်းနိုင်ပါတယ်ဗျာ။ 🙏', 'bot', false);
             }
+        } catch (error) {
+            console.error('Auth check error:', error);
+            currentUser = null;
+            updateNavbar();
+            addMessage('မင်္ဂလာပါ! ကျွန်တော်က Myanmar Mobile Sales AI ပါ။ ဖုန်းအမျိုးအစားများ၊ ဈေးနှုန်းများနှင့် အချက်အလက်များကို မေးမြန်းနိုင်ပါတယ်ဗျာ။ 🙏', 'bot', false);
         }
-    } catch (error) {
-        console.error('Error loading chat history:', error);
-        addMessage('မင်္ဂလာပါ! ကျွန်တော်က Myanmar Mobile Sales AI ပါ။ ဖုန်းအမျိုးအစားများ၊ ဈေးနှုန်းများနှင့် အချက်အလက်များကို မေးမြန်းနိုင်ပါတယ်ဗျာ။ 🙏', 'bot', false);
     }
-}
 
-// Initialize on page load
-checkAuth();
+    // Update navbar based on authentication
+    function updateNavbar() {
+       if (currentUser) {
+            navbarActions.innerHTML = `
+                <button class="user-info-btn" onclick="showOrderHistory()" style="background: #e0f2fe; color: #0369a1;">
+                    <i class="fas fa-shopping-bag"></i>
+                    <span>Orders</span>
+                </button>
 
-// Show notification after page load
-setTimeout(() => {
-    notification.classList.add('show');
-    setTimeout(() => {
-        notification.classList.remove('show');
-    }, 5000);
-}, 1000);
-
-// Toggle chat window
-chatbotIcon.addEventListener('click', () => {
-    if (!chatOpen) openChat();
-});
-
-closeChat.addEventListener('click', (e) => {
-    e.stopPropagation();
-    closeChatWindow();
-});
-
-function openChat() {
-    chatContainer.classList.add('active');
-    chatOpen = true;
-    notification.classList.remove('show');
-    setTimeout(() => { userInput.focus(); }, 300);
-}
-
-function closeChatWindow() {
-    chatContainer.classList.remove('active');
-    chatOpen = false;
-}
-
-// Send message function
-sendButton.addEventListener('click', sendMessage);
-userInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendMessage();
+                <button class="user-info-btn" onclick="showProfileModal()">
+                    <i class="fas fa-user-circle"></i>
+                    <span>${currentUser.username}</span>
+                </button>
+                <button class="logout-btn" onclick="logout()">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Logout</span>
+                </button>
+            `;
+        } else {
+            navbarActions.innerHTML = `
+                <button class="user-info-btn" onclick="window.location.href='/login'">
+                    <i class="fas fa-sign-in-alt"></i>
+                    <span>Login</span>
+                </button>
+                <button class="logout-btn" onclick="window.location.href='/register'" style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);">
+                    <i class="fas fa-user-plus"></i>
+                    <span>Register</span>
+                </button>
+            `;
+        }
     }
-});
 
-async function sendMessage() {
-    const message = userInput.value.trim();
-    const selectedModel = modelSelect.value;
+    // Show profile modal
+    function showProfileModal() {
+        if (!currentUser) return;
 
-    if (!message) return;
+        const genderDisplay = currentUser.gender === 'male' ? 'Male' :
+                             currentUser.gender === 'female' ? 'Female' : 'Other';
 
-    // Add user message to UI
-    addMessage(message, 'user');
-    userInput.value = '';
-
-    // Show typing indicator
-    const typingIndicator = document.createElement('div');
-    typingIndicator.className = 'typing-indicator';
-    typingIndicator.innerHTML = `
-        <div class="typing-dot"></div>
-        <div class="typing-dot"></div>
-        <div class="typing-dot"></div>
-    `;
-    chatMessages.appendChild(typingIndicator);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-
-    try {
-        const response = await fetch('/chat-stream', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-                message: message,
-                history: chatHistory,
-                model_type: selectedModel,
-                session_id: currentSessionId
-            })
+        const createdDate = new Date(currentUser.created_at).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
         });
 
-        if (!response.ok) throw new Error('Network response was not ok');
+        document.getElementById('profileInfo').innerHTML = `
+            <div class="profile-item">
+                <i class="fas fa-user"></i>
+                <div>
+                    <div class="profile-item-label">Username</div>
+                    <div class="profile-item-value">${currentUser.username}</div>
+                </div>
+            </div>
+            <div class="profile-item">
+                <i class="fas fa-birthday-cake"></i>
+                <div>
+                    <div class="profile-item-label">Age</div>
+                    <div class="profile-item-value">${currentUser.age} years old</div>
+                </div>
+            </div>
+            <div class="profile-item">
+                <i class="fas fa-venus-mars"></i>
+                <div>
+                    <div class="profile-item-label">Gender</div>
+                    <div class="profile-item-value">${genderDisplay}</div>
+                </div>
+            </div>
+            <div class="profile-item">
+                <i class="fas fa-calendar-alt"></i>
+                <div>
+                    <div class="profile-item-label">Member Since</div>
+                    <div class="profile-item-value">${createdDate}</div>
+                </div>
+            </div>
 
-        // Remove typing indicator
-        chatMessages.removeChild(typingIndicator);
+             <button
+            onclick="openEditProfileModal()"
+            style="width: 100%; margin-top: 16px; padding: 12px; background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.3s;"
+            onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 25px rgba(59, 130, 246, 0.4)';"
+            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none';"
+        >
+            <i class="fas fa-edit"></i> Edit Profile
+        </button>
 
-        // Create bot message div
-        const botMessageDiv = document.createElement('div');
-        botMessageDiv.className = 'message bot';
-        chatMessages.appendChild(botMessageDiv);
+         <button
+            onclick="openDeleteAccountModal()"
+            style="width: 100%; margin-top: 8px; padding: 12px; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.3s;"
+            onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 25px rgba(239, 68, 68, 0.4)';"
+            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none';"
+        >
+            <i class="fas fa-trash-alt"></i> Delete Account
+        </button>
+        `;
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let fullReply = "";
+        profileModal.classList.add('active');
+    }
 
-        // Read stream
-        while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
+    // Close profile modal
+    function closeProfileModal() {
+        profileModal.classList.remove('active');
+    }
 
-            const chunk = decoder.decode(value);
-            const lines = chunk.split('\n');
+    // Close modal when clicking outside
+    profileModal.addEventListener('click', (e) => {
+        if (e.target === profileModal) {
+            closeProfileModal();
+        }
+    });
 
-            for (const line of lines) {
-                if (line.trim().startsWith('data: ')) {
-                    try {
-                        const jsonString = line.replace('data: ', '').trim();
-                        const data = JSON.parse(jsonString);
+    // Logout function
+    async function logout() {
+        try {
+            const response = await fetch('/api/logout', {
+                method: 'POST',
+                credentials: 'include'
+            });
 
-                        fullReply += data.text;
-                        botMessageDiv.innerHTML = fullReply.replace(/\n/g, '<br>');
-                        chatMessages.scrollTop = chatMessages.scrollHeight;
-                    } catch (e) {
-                        console.error('Error parsing stream data:', e);
+            if (response.ok) {
+                window.location.href = '/login';
+            }
+        } catch (error) {
+            console.error('Logout error:', error);
+            alert('Logout failed. Please try again.');
+        }
+    }
+
+    // Load chat history for current user
+    async function loadChatHistory() {
+        if (!currentUser) {
+            addMessage('မင်္ဂလာပါ! ကျွန်တော်က Myanmar Mobile Sales AI ပါ။ ဖုန်းအမျိုးအစားများ၊ ဈေးနှုန်းများနှင့် အချက်အလက်များကို မေးမြန်းနိုင်ပါတယ်ဗျာ။ 🙏', 'bot');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/current-session', {
+                credentials: 'include'
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                currentSessionId = data.session_id;
+
+                // Clear chat messages
+                chatMessages.innerHTML = '';
+
+                // Load messages from history
+                if (data.messages && data.messages.length > 0) {
+                    data.messages.forEach(msg => {
+                        addMessage(msg.content, msg.role === 'user' ? 'user' : 'bot', false);
+
+                        // Update chatHistory for context
+                        chatHistory.push({
+                            role: msg.role,
+                            content: msg.content
+                        });
+                    });
+                } else {
+                    // Show welcome message
+                    addMessage('မင်္ဂလာပါ! ကျွန်တော်က Myanmar Mobile Sales AI ပါ။ ဖုန်းအမျိုးအစားများ၊ ဈေးနှုန်းများနှင့် အချက်အလက်များကို မေးမြန်းနိုင်ပါတယ်ဗျာ။ 🙏', 'bot', false);
+                }
+            }
+        } catch (error) {
+            console.error('Error loading chat history:', error);
+            addMessage('မင်္ဂလာပါ! ကျွန်တော်က Myanmar Mobile Sales AI ပါ။ ဖုန်းအမျိုးအစားများ၊ ဈေးနှုန်းများနှင့် အချက်အလက်များကို မေးမြန်းနိုင်ပါတယ်ဗျာ။ 🙏', 'bot', false);
+        }
+    }
+
+    // Initialize on page load
+    checkAuth();
+
+    // Show notification after page load
+    setTimeout(() => {
+        notification.classList.add('show');
+        setTimeout(() => {
+            notification.classList.remove('show');
+        }, 5000);
+    }, 1000);
+
+    // Toggle chat window
+    chatbotIcon.addEventListener('click', () => {
+        if (!chatOpen) openChat();
+    });
+
+    closeChat.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeChatWindow();
+    });
+
+    function openChat() {
+        chatContainer.classList.add('active');
+        chatOpen = true;
+        notification.classList.remove('show');
+        setTimeout(() => { userInput.focus(); }, 300);
+    }
+
+    function closeChatWindow() {
+        chatContainer.classList.remove('active');
+        chatOpen = false;
+    }
+
+    // Send message function
+    sendButton.addEventListener('click', sendMessage);
+    userInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+
+    async function sendMessage() {
+        const message = userInput.value.trim();
+        const selectedModel = modelSelect.value;
+
+        if (!message) return;
+
+        // Add user message to UI
+        addMessage(message, 'user');
+        userInput.value = '';
+
+        // Show typing indicator
+        const typingIndicator = document.createElement('div');
+        typingIndicator.className = 'typing-indicator';
+        typingIndicator.innerHTML = `
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+        `;
+        chatMessages.appendChild(typingIndicator);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        try {
+            const response = await fetch('/chat-stream', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    message: message,
+                    history: chatHistory,
+                    model_type: selectedModel,
+                    session_id: currentSessionId
+                })
+            });
+
+            if (!response.ok) throw new Error('Network response was not ok');
+
+            // Remove typing indicator
+            chatMessages.removeChild(typingIndicator);
+
+            // Create bot message div
+            const botMessageDiv = document.createElement('div');
+            botMessageDiv.className = 'message bot';
+            chatMessages.appendChild(botMessageDiv);
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let fullReply = "";
+
+            // Read stream
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n');
+
+                for (const line of lines) {
+                    if (line.trim().startsWith('data: ')) {
+                        try {
+                            const jsonString = line.replace('data: ', '').trim();
+                            const data = JSON.parse(jsonString);
+
+                            fullReply += data.text;
+                            botMessageDiv.innerHTML = fullReply.replace(/\n/g, '<br>');
+                            chatMessages.scrollTop = chatMessages.scrollHeight;
+                        } catch (e) {
+                            console.error('Error parsing stream data:', e);
+                        }
                     }
                 }
             }
+
+            // Update history
+            chatHistory.push({role: "user", content: message});
+            chatHistory.push({role: "assistant", content: fullReply});
+
+            // Keep only last 10 messages for context
+            if (chatHistory.length > 10) chatHistory = chatHistory.slice(-10);
+
+        } catch (error) {
+            if (chatMessages.contains(typingIndicator)) {
+                chatMessages.removeChild(typingIndicator);
+            }
+            addMessage('အမှားတစ်ခုရှိနေပါသည်- ' + error.message, 'bot');
+            console.error('Chat error:', error);
         }
+    }
 
-        // Update history
-        chatHistory.push({role: "user", content: message});
-        chatHistory.push({role: "assistant", content: fullReply});
+    // Helper function to add message
+    function addMessage(text, sender, scroll = true) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${sender}`;
+        messageDiv.innerHTML = text.replace(/\n/g, '<br>');
+        chatMessages.appendChild(messageDiv);
 
-        // Keep only last 10 messages for context
-        if (chatHistory.length > 10) chatHistory = chatHistory.slice(-10);
-
-    } catch (error) {
-        if (chatMessages.contains(typingIndicator)) {
-            chatMessages.removeChild(typingIndicator);
+        if (scroll) {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
         }
-        addMessage('အမှားတစ်ခုရှိနေပါသည်- ' + error.message, 'bot');
-        console.error('Chat error:', error);
     }
-}
 
-// Helper function to add message
-function addMessage(text, sender, scroll = true) {
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${sender}`;
-    messageDiv.innerHTML = text.replace(/\n/g, '<br>');
-    chatMessages.appendChild(messageDiv);
+    const orderModal = document.getElementById('orderModal');
 
-    if (scroll) {
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-    }
-}
-
-const orderModal = document.getElementById('orderModal');
-
-async function showOrderHistory() {
+   async function showOrderHistory() {
     const orderList = document.getElementById('orderList');
-    orderList.innerHTML = '<p style="text-align:center;">Loading orders...</p>';
+    orderList.innerHTML = '<p style="text-align:center; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Loading orders...</p>';
     orderModal.classList.add('active');
 
     try {
@@ -954,42 +1261,439 @@ async function showOrderHistory() {
         const data = await response.json();
 
         if (data.success && data.orders.length > 0) {
-            orderList.innerHTML = data.orders.map(order => `
-                <div class="profile-item" style="display: block; margin-bottom: 10px;">
-                    <div style="display: flex; justify-content: space-between; font-weight: bold;">
-                        <span>Order #${order.id}</span>
-                        <span style="color: #3b82f6;">${order.total_price} Ks</span>
+            orderList.innerHTML = data.orders.map(order => {
+                const statusColors = {
+                    'pending': '#fbbf24',
+                    'confirmed': '#3b82f6',
+                    'processing': '#8b5cf6',
+                    'shipped': '#ec4899',
+                    'delivered': '#10b981',
+                    'cancelled': '#ef4444'
+                };
+                const statusColor = statusColors[order.status] || '#64748b';
+
+                return `
+                    <div style="border: 2px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 16px; background: #f8fafc;">
+                        <!-- Order Header -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 2px solid #e2e8f0;">
+                            <div>
+                                <div style="font-weight: 700; color: #1e293b; font-size: 16px;">
+                                    <i class="fas fa-receipt"></i> ${order.order_number}
+                                </div>
+                                <div style="font-size: 12px; color: #64748b; margin-top: 4px;">
+                                    <i class="fas fa-calendar"></i> ${new Date(order.created_at).toLocaleDateString('en-US', {
+                                        year: 'numeric',
+                                        month: 'short',
+                                        day: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                    })}
+                                </div>
+                            </div>
+                            <div style="background: ${statusColor}; color: white; padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase;">
+                                ${order.status}
+                            </div>
+                        </div>
+
+                        <!-- Order Items -->
+                        <div style="margin-bottom: 12px;">
+                            ${order.items.map(item => `
+                                <div style="display: flex; justify-content: space-between; padding: 10px; background: white; border-radius: 8px; margin-bottom: 8px;">
+                                    <div>
+                                        <div style="font-weight: 600; color: #1e293b; margin-bottom: 4px;">
+                                            ${item.brand} ${item.model}
+                                        </div>
+                                        <div style="font-size: 12px; color: #64748b;">
+                                            <i class="fas fa-memory"></i> ${item.ram_storage} •
+                                            <i class="fas fa-palette"></i> ${item.color}
+                                        </div>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <div style="font-weight: 700; color: #3b82f6;">
+                                            ${item.price.toLocaleString()} Ks
+                                        </div>
+                                        <div style="font-size: 12px; color: #64748b;">
+                                            Qty: ${item.quantity}
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+
+                        <!-- Order Info -->
+                        <div style="background: white; padding: 12px; border-radius: 8px; margin-bottom: 12px;">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 13px;">
+                                <div>
+                                    <div style="color: #64748b; font-size: 11px; margin-bottom: 4px;">
+                                        <i class="fas fa-map-marker-alt"></i> DELIVERY ADDRESS
+                                    </div>
+                                    <div style="color: #1e293b; font-weight: 600;">
+                                        ${order.delivery_address}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style="color: #64748b; font-size: 11px; margin-bottom: 4px;">
+                                        <i class="fas fa-phone"></i> PHONE
+                                    </div>
+                                    <div style="color: #1e293b; font-weight: 600;">
+                                        ${order.phone_number}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style="color: #64748b; font-size: 11px; margin-bottom: 4px;">
+                                        <i class="fas fa-credit-card"></i> PAYMENT
+                                    </div>
+                                    <div style="color: #1e293b; font-weight: 600;">
+                                        ${order.payment_method}
+                                    </div>
+                                </div>
+                                ${order.transaction_number ? `
+                                <div>
+                                    <div style="color: #64748b; font-size: 11px; margin-bottom: 4px;">
+                                        <i class="fas fa-hashtag"></i> TRANSACTION
+                                    </div>
+                                    <div style="color: #1e293b; font-weight: 600;">
+                                        ${order.transaction_number}
+                                    </div>
+                                </div>
+                                ` : ''}
+                            </div>
+                            ${order.note ? `
+                                <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #e2e8f0;">
+                                    <div style="color: #64748b; font-size: 11px; margin-bottom: 4px;">
+                                        <i class="fas fa-sticky-note"></i> NOTE
+                                    </div>
+                                    <div style="color: #1e293b; font-weight: 600;">
+                                        ${order.note}
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+
+                        <!-- Order Total -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%); padding: 12px 16px; border-radius: 8px;">
+                            <span style="font-weight: 600; color: #4a5568;">
+                                <i class="fas fa-money-bill-wave"></i> Total Amount
+                            </span>
+                            <span style="font-size: 20px; font-weight: 700; color: #3b82f6;">
+                                ${order.total_amount.toLocaleString()} Ks
+                            </span>
+                        </div>
                     </div>
-                    <div style="font-size: 12px; color: #64748b; margin-top: 5px;">
-                        Status: <span style="color: #10b981;">${order.status}</span> | Date: ${new Date(order.created_at).toLocaleDateString()}
-                    </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
         } else {
-            orderList.innerHTML = '<p style="text-align:center; color:#64748b;">မှာယူထားသည့်မှတ်တမ်း မရှိသေးပါ။</p>';
+            orderList.innerHTML = `
+                <div style="text-align: center; padding: 60px 20px;">
+                    <i class="fas fa-shopping-bag" style="font-size: 64px; color: #cbd5e0; margin-bottom: 16px;"></i>
+                    <h3 style="color: #4a5568; font-size: 20px; margin-bottom: 8px;">No Orders Yet</h3>
+                    <p style="color: #718096;">Start shopping and your orders will appear here!</p>
+                </div>
+            `;
         }
     } catch (error) {
-        orderList.innerHTML = '<p style="text-align:center; color:red;">Error loading orders.</p>';
+        console.error('Error loading orders:', error);
+        orderList.innerHTML = `
+            <div style="text-align: center; padding: 40px 20px;">
+                <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: #ef4444; margin-bottom: 16px;"></i>
+                <p style="color: #ef4444; font-weight: 600;">Error loading orders</p>
+                <p style="color: #64748b; font-size: 14px; margin-top: 8px;">${error.message}</p>
+            </div>
+        `;
     }
 }
 
-function closeOrderModal() {
-    orderModal.classList.remove('active');
+    function closeOrderModal() {
+        orderModal.classList.remove('active');
+    }
+
+    // အပြင်ဘက်ကိုနှိပ်ရင် ပိတ်သွားအောင် လုပ်ခြင်း
+    orderModal.addEventListener('click', (e) => {
+        if (e.target === orderModal) closeOrderModal();
+    });
+
+    // Close chat when clicking outside
+    document.addEventListener('click', (e) => {
+        if (chatOpen && !chatContainer.contains(e.target) && !chatbotIcon.contains(e.target)) {
+            closeChatWindow();
+        }
+    });
+
+    chatContainer.addEventListener('click', (e) => e.stopPropagation());
+
+    // ═══════════════════════════════════════════════════════════════
+// PROFILE EDIT FUNCTIONALITY
+// ═══════════════════════════════════════════════════════════════
+
+const editProfileModal = document.getElementById('editProfileModal');
+const editProfileForm = document.getElementById('editProfileForm');
+
+// Open edit profile modal and populate with current data
+function openEditProfileModal() {
+    if (!currentUser) {
+        alert('Please login first');
+        return;
+    }
+
+    // Populate form with current user data
+    document.getElementById('editUsername').value = currentUser.username;
+    document.getElementById('editAge').value = currentUser.age;
+
+    // Set gender radio button
+    const genderRadios = document.querySelectorAll('input[name="editGender"]');
+    genderRadios.forEach(radio => {
+        radio.checked = (radio.value === currentUser.gender);
+    });
+
+    // Reset password section
+    document.getElementById('changePasswordToggle').checked = false;
+    document.getElementById('passwordChangeSection').style.display = 'none';
+    document.getElementById('editCurrentPassword').value = '';
+    document.getElementById('editNewPassword').value = '';
+
+    // Close profile modal and open edit modal
+    closeProfileModal();
+    editProfileModal.classList.add('active');
 }
 
-// အပြင်ဘက်ကိုနှိပ်ရင် ပိတ်သွားအောင် လုပ်ခြင်း
-orderModal.addEventListener('click', (e) => {
-    if (e.target === orderModal) closeOrderModal();
-});
+// Close edit profile modal
+function closeEditProfileModal() {
+    editProfileModal.classList.remove('active');
+    editProfileForm.reset();
+}
 
-// Close chat when clicking outside
-document.addEventListener('click', (e) => {
-    if (chatOpen && !chatContainer.contains(e.target) && !chatbotIcon.contains(e.target)) {
-        closeChatWindow();
+// Toggle password change section
+function togglePasswordChange() {
+    const passwordSection = document.getElementById('passwordChangeSection');
+    const isChecked = document.getElementById('changePasswordToggle').checked;
+
+    if (isChecked) {
+        passwordSection.style.display = 'block';
+        document.getElementById('editCurrentPassword').required = true;
+        document.getElementById('editNewPassword').required = true;
+    } else {
+        passwordSection.style.display = 'none';
+        document.getElementById('editCurrentPassword').required = false;
+        document.getElementById('editNewPassword').required = false;
+        document.getElementById('editCurrentPassword').value = '';
+        document.getElementById('editNewPassword').value = '';
+    }
+}
+
+// Handle edit profile form submission
+editProfileForm.addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const age = parseInt(document.getElementById('editAge').value);
+    const gender = document.querySelector('input[name="editGender"]:checked').value;
+    const changePassword = document.getElementById('changePasswordToggle').checked;
+    const currentPassword = document.getElementById('editCurrentPassword').value;
+    const newPassword = document.getElementById('editNewPassword').value;
+
+    // Validate age
+    if (age < 13 || age > 100) {
+        alert('Age must be between 13 and 100');
+        return;
+    }
+
+    // Validate password change if requested
+    if (changePassword) {
+        if (!currentPassword || !newPassword) {
+            alert('Please provide both current and new password');
+            return;
+        }
+        if (newPassword.length < 6) {
+            alert('New password must be at least 6 characters');
+            return;
+        }
+    }
+
+    // Show loading state
+    const submitButton = editProfileForm.querySelector('button[type="submit"]');
+    const originalButtonContent = submitButton.innerHTML;
+    submitButton.disabled = true;
+    submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+
+    try {
+        // Prepare form data
+        const formData = new FormData();
+        formData.append('age', age);
+        formData.append('gender', gender);
+
+        if (changePassword) {
+            formData.append('current_password', currentPassword);
+            formData.append('new_password', newPassword);
+        }
+
+        // Send update request
+        const response = await fetch('/api/profile/update', {
+            method: 'POST',
+            credentials: 'include',
+            body: formData
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            alert('Profile updated successfully!');
+
+            // Update currentUser object with new data
+            currentUser.age = age;
+            currentUser.gender = gender;
+
+            // Close modal and refresh auth to get updated user data
+            closeEditProfileModal();
+            await checkAuth(); // Refresh user data
+
+        } else {
+            alert('Update failed: ' + result.message);
+        }
+
+    } catch (error) {
+        console.error('Profile update error:', error);
+        alert('An error occurred while updating profile. Please try again.');
+    } finally {
+        // Restore button state
+        submitButton.disabled = false;
+        submitButton.innerHTML = originalButtonContent;
     }
 });
 
-chatContainer.addEventListener('click', (e) => e.stopPropagation());
-    </script>
+// Close modal when clicking outside
+editProfileModal.addEventListener('click', (e) => {
+    if (e.target === editProfileModal) {
+        closeEditProfileModal();
+    }
+});
+
+    // ═══════════════════════════════════════════════════════════════
+// ACCOUNT DELETION FUNCTIONALITY
+// ═══════════════════════════════════════════════════════════════
+
+const deleteAccountModal = document.getElementById('deleteAccountModal');
+const deleteAccountForm = document.getElementById('deleteAccountForm');
+
+// Open delete account confirmation modal
+function openDeleteAccountModal() {
+    if (!currentUser) {
+        alert('Please login first');
+        return;
+    }
+
+    // Display username in confirmation modal
+    document.getElementById('deleteAccountUsername').textContent = currentUser.username;
+
+    // Reset form
+    document.getElementById('deleteAccountPassword').value = '';
+    document.getElementById('deleteConfirmCheckbox').checked = false;
+
+    // Close profile modal and open delete modal
+    closeProfileModal();
+    deleteAccountModal.classList.add('active');
+}
+
+// Close delete account modal
+function closeDeleteAccountModal() {
+    deleteAccountModal.classList.remove('active');
+    deleteAccountForm.reset();
+}
+
+// Handle delete account form submission
+deleteAccountForm.addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const password = document.getElementById('deleteAccountPassword').value;
+    const confirmChecked = document.getElementById('deleteConfirmCheckbox').checked;
+
+    // Validate
+    if (!password) {
+        alert('Please enter your password');
+        return;
+    }
+
+    if (!confirmChecked) {
+        alert('Please confirm that you understand this action is permanent');
+        return;
+    }
+
+    // Final confirmation
+    const finalConfirm = confirm(
+        `⚠️ FINAL CONFIRMATION ⚠️\n\n` +
+        `Are you absolutely sure you want to delete your account?\n\n` +
+        `Username: ${currentUser.username}\n\n` +
+        `This will permanently delete:\n` +
+        `• Your account\n` +
+        `• All chat history\n` +
+        `• All orders\n\n` +
+        `This action CANNOT be undone!`
+    );
+
+    if (!finalConfirm) {
+        return;
+    }
+
+    // Show loading state
+    const submitButton = deleteAccountForm.querySelector('button[type="submit"]');
+    const originalButtonContent = submitButton.innerHTML;
+    submitButton.disabled = true;
+    submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting...';
+
+    try {
+        // Prepare form data
+        const formData = new FormData();
+        formData.append('password', password);
+
+        // Send delete request
+        const response = await fetch('/api/account/delete', {
+            method: 'POST',
+            credentials: 'include',
+            body: formData
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            // Show success message
+            alert('Account deleted successfully. You will be redirected to the registration page.');
+
+            // Close modal
+            closeDeleteAccountModal();
+
+            // Logout and redirect
+            try {
+                await fetch('/api/logout', {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+            } catch (e) {
+                console.error('Logout error:', e);
+            }
+
+            // Redirect to registration page after a short delay
+            setTimeout(() => {
+                window.location.href = '/register';
+            }, 500);
+
+        } else {
+            alert('Account deletion failed: ' + result.message);
+            submitButton.disabled = false;
+            submitButton.innerHTML = originalButtonContent;
+        }
+
+    } catch (error) {
+        console.error('Account deletion error:', error);
+        alert('An error occurred while deleting your account. Please try again.');
+        submitButton.disabled = false;
+        submitButton.innerHTML = originalButtonContent;
+    }
+});
+
+// Close modal when clicking outside
+deleteAccountModal.addEventListener('click', (e) => {
+    if (e.target === deleteAccountModal) {
+        closeDeleteAccountModal();
+    }
+});
+</script>
 </body>
 </html>

@@ -1,26 +1,33 @@
 """Myanmar Mobile Sales AI Assistant - With Ordering System"""
-import asyncio, json, os, sqlite3, uvicorn, hashlib, jwt, logging
+import asyncio
+import hashlib
+import json
+import logging
+import os
+import sqlite3
 from datetime import datetime, timedelta
 from typing import Optional, Dict
+
+import jwt
+import uvicorn
 from dotenv import load_dotenv
-from jwt.exceptions import InvalidTokenError
-import logic
-from fastapi import FastAPI, Request, Form, Depends, HTTPException, status
+from fastapi import FastAPI, Request, Form, Depends, HTTPException
 from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
-from starlette.middleware.cors import CORSMiddleware
+from jwt.exceptions import InvalidTokenError
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
+from starlette.middleware.cors import CORSMiddleware
 
+import logic
+from advanced_intent_classifier import Intent
 # Import ordering system
 from order_system import (
     OrderDatabase, OrderFlowManager, OrderState,
     get_order_state, reset_order_state
 )
 from response_validator import validate_response
-from advanced_intent_classifier import Intent
-
+from typing import List
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -178,6 +185,169 @@ async def register_user(username: str = Form(...), password: str = Form(...), ag
     except Exception as e:
         logger.error(f"❌ Registration error: {e}")
         return JSONResponse(status_code=500, content={"success": False, "message": "Registration failed"})
+
+
+@app.post("/api/profile/update")
+async def update_profile(
+        current_user: dict = Depends(get_current_user),
+        age: int = Form(None),
+        gender: str = Form(None),
+        current_password: str = Form(None),
+        new_password: str = Form(None)
+):
+    """Update user profile information"""
+    try:
+        conn = get_users_db_conn()
+        user_id = current_user["id"]
+
+        # Validate inputs
+        if age is not None:
+            if age < 13 or age > 100:
+                conn.close()
+                return JSONResponse(
+                    status_code=400,
+                    content={"success": False, "message": "Age must be between 13-100"}
+                )
+
+        if gender is not None:
+            if gender not in ["male", "female", "other"]:
+                conn.close()
+                return JSONResponse(
+                    status_code=400,
+                    content={"success": False, "message": "Invalid gender"}
+                )
+
+        # Handle password change if requested
+        if new_password and current_password:
+            # Verify current password
+            user = conn.execute(
+                "SELECT password_hash FROM users WHERE id = ?",
+                (user_id,)
+            ).fetchone()
+
+            if not verify_password(current_password, user["password_hash"]):
+                conn.close()
+                return JSONResponse(
+                    status_code=400,
+                    content={"success": False, "message": "Current password is incorrect"}
+                )
+
+            # Validate new password
+            if len(new_password) < 6:
+                conn.close()
+                return JSONResponse(
+                    status_code=400,
+                    content={"success": False, "message": "New password must be at least 6 characters"}
+                )
+
+            # Update with new password
+            new_password_hash = hash_password(new_password)
+            conn.execute(
+                "UPDATE users SET age = COALESCE(?, age), gender = COALESCE(?, gender), password_hash = ? WHERE id = ?",
+                (age, gender, new_password_hash, user_id)
+            )
+            conn.commit()
+            conn.close()
+            logger.info(f"✅ Profile updated with password change for user {user_id}")
+            return JSONResponse(content={"success": True, "message": "Profile and password updated successfully!"})
+
+        # Update without password change
+        conn.execute(
+            "UPDATE users SET age = COALESCE(?, age), gender = COALESCE(?, gender) WHERE id = ?",
+            (age, gender, user_id)
+        )
+        conn.commit()
+        conn.close()
+        logger.info(f"✅ Profile updated for user {user_id}")
+        return JSONResponse(content={"success": True, "message": "Profile updated successfully!"})
+
+    except Exception as e:
+        logger.error(f"❌ Profile update error: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "Profile update failed"}
+        )
+
+
+@app.post("/api/account/delete")
+async def delete_own_account(
+        current_user: dict = Depends(get_current_user),
+        password: str = Form(...)
+):
+    """
+    Allow user to delete their own account with password confirmation
+    This is different from admin deletion - users can only delete their own account
+    """
+    try:
+        conn = get_users_db_conn()
+        user_id = current_user["id"]
+
+        # Verify password
+        user = conn.execute(
+            "SELECT password_hash FROM users WHERE id = ?",
+            (user_id,)
+        ).fetchone()
+
+        if not user:
+            conn.close()
+            return JSONResponse(
+                status_code=404,
+                content={"success": False, "message": "User not found"}
+            )
+
+        # Check password
+        if not verify_password(password, user["password_hash"]):
+            conn.close()
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "message": "Incorrect password"}
+            )
+
+        # Delete user's data from related tables first
+        # Delete chat messages
+        conn.execute("""
+            DELETE FROM chat_messages 
+            WHERE session_id IN (
+                SELECT id FROM chat_sessions WHERE user_id = ?
+            )
+        """, (user_id,))
+
+        # Delete chat sessions
+        conn.execute("DELETE FROM chat_sessions WHERE user_id = ?", (user_id,))
+
+        # Delete order items
+        conn.execute("""
+            DELETE FROM order_items 
+            WHERE order_id IN (
+                SELECT id FROM orders WHERE user_id = ?
+            )
+        """, (user_id,))
+
+        # Delete orders
+        conn.execute("DELETE FROM orders WHERE user_id = ?", (user_id,))
+
+        # Delete order session
+        conn.execute("DELETE FROM order_sessions WHERE user_id = ?", (user_id,))
+
+        # Finally, delete the user
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+
+        conn.commit()
+        conn.close()
+
+        logger.info(f"✅ User {current_user['username']} (ID: {user_id}) deleted their own account")
+
+        return JSONResponse(content={
+            "success": True,
+            "message": "Account deleted successfully"
+        })
+
+    except Exception as e:
+        logger.error(f"❌ Account deletion error: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "Account deletion failed"}
+        )
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
@@ -615,12 +785,303 @@ async def delete_user(user_id: int):
     # Redirect back to the users list after deletion
     return RedirectResponse(url="/usersession", status_code=303)
 
-# New: View user orders
+
+# User: Get personal order history with items
 @app.get("/api/orders")
 async def get_user_orders(current_user: dict = Depends(get_current_user)):
-    orders = order_db.get_user_orders(current_user["id"])
-    return {"success": True, "orders": orders}
+    """Get current user's orders with full item details"""
+    try:
+        with order_db._get_connection() as conn:
+            # Get user's orders
+            cursor = conn.execute("""
+                SELECT 
+                    id, order_number, total_amount, delivery_address,
+                    phone_number, payment_method, note, transaction_number,
+                    status, created_at
+                FROM orders
+                WHERE user_id = ?
+                ORDER BY created_at DESC
+            """, (current_user["id"],))
+            orders = [dict(row) for row in cursor.fetchall()]
 
+            # Get items for each order
+            for order in orders:
+                cursor = conn.execute("""
+                    SELECT 
+                        product_id, brand, model, ram_storage, 
+                        color, price, quantity
+                    FROM order_items
+                    WHERE order_id = ?
+                """, (order['id'],))
+                order['items'] = [dict(row) for row in cursor.fetchall()]
+
+        return {"success": True, "orders": orders}
+    except Exception as e:
+        logger.error(f"❌ Error fetching user orders: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "Failed to fetch orders"}
+        )
+
+
+# Admin: View all orders with full details
+@app.get("/api/admin/orders")
+async def get_all_orders(current_user: dict = Depends(get_current_user)):
+    """Get all orders for admin panel - requires authentication"""
+    try:
+        with order_db._get_connection() as conn:
+            # Get all orders with user information
+            cursor = conn.execute("""
+                SELECT 
+                    o.id, o.order_number, o.user_id, o.total_amount,
+                    o.delivery_address, o.phone_number, o.payment_method,
+                    o.note, o.transaction_number, o.status, o.created_at,
+                    u.username
+                FROM orders o
+                LEFT JOIN users u ON o.user_id = u.id
+                ORDER BY o.created_at DESC
+            """)
+            orders = [dict(row) for row in cursor.fetchall()]
+
+            # Get order items for each order
+            for order in orders:
+                cursor = conn.execute("""
+                    SELECT 
+                        id, product_id, brand, model, ram_storage, 
+                        color, price, quantity
+                    FROM order_items
+                    WHERE order_id = ?
+                """, (order['id'],))
+                order['items'] = [dict(row) for row in cursor.fetchall()]
+
+        return {"success": True, "orders": orders}
+    except Exception as e:
+        logger.error(f"❌ Error fetching admin orders: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "Failed to fetch orders"}
+        )
+
+
+# Admin: Update order status
+@app.post("/api/admin/orders/{order_id}/status")
+async def update_order_status(
+        order_id: int,
+        status: str = Form(...),
+        current_user: dict = Depends(get_current_user)
+):
+    """
+    Update order status with inventory management
+    - When confirming order: Subtract quantities from inventory
+    - When cancelling confirmed order: Restore quantities to inventory
+    """
+    try:
+        valid_statuses = ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled']
+        if status not in valid_statuses:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "message": "Invalid status"}
+            )
+
+        # Get current order status and details
+        with order_db._get_connection() as conn:
+            order = conn.execute(
+                "SELECT id, status, order_number FROM orders WHERE id = ?",
+                (order_id,)
+            ).fetchone()
+
+            if not order:
+                return JSONResponse(
+                    status_code=404,
+                    content={"success": False, "message": "Order not found"}
+                )
+
+            old_status = order["status"]
+            order_number = order["order_number"]
+
+            # If status is not changing, just return success
+            if old_status == status:
+                return {"success": True, "message": "Status unchanged"}
+
+            # Get order items
+            order_items = conn.execute(
+                "SELECT product_id, quantity FROM order_items WHERE order_id = ?",
+                (order_id,)
+            ).fetchall()
+
+        # ═══════════════════════════════════════════════════════════════
+        # INVENTORY MANAGEMENT LOGIC
+        # ═══════════════════════════════════════════════════════════════
+
+        # Case 1: Confirming order (pending → confirmed)
+        if old_status == 'pending' and status == 'confirmed':
+            logger.info(f"📦 Confirming order {order_number} - checking inventory...")
+
+            # Check if sufficient stock available
+            with sqlite3.connect(SQLITE_PATH) as products_conn:
+                products_conn.row_factory = sqlite3.Row
+                insufficient_stock = []
+
+                for item in order_items:
+                    product = products_conn.execute(
+                        "SELECT id, brand, model, quantity FROM products WHERE id = ?",
+                        (item["product_id"],)
+                    ).fetchone()
+
+                    if not product:
+                        insufficient_stock.append(f"Product ID {item['product_id']} not found")
+                    elif product["quantity"] < item["quantity"]:
+                        insufficient_stock.append(
+                            f"{product['brand']} {product['model']}: "
+                            f"Need {item['quantity']}, Only {product['quantity']} available"
+                        )
+
+                # If insufficient stock, return error
+                if insufficient_stock:
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "success": False,
+                            "message": "Insufficient stock",
+                            "details": insufficient_stock
+                        }
+                    )
+
+                # Deduct quantities from inventory
+                for item in order_items:
+                    products_conn.execute(
+                        "UPDATE products SET quantity = quantity - ? WHERE id = ?",
+                        (item["quantity"], item["product_id"])
+                    )
+                    logger.info(f"  ✓ Deducted {item['quantity']} units from product ID {item['product_id']}")
+
+                products_conn.commit()
+
+            logger.info(f"✅ Inventory deducted for order {order_number}")
+
+        # Case 2: Cancelling a confirmed/processing/shipped order (restore inventory)
+        elif status == 'cancelled' and old_status in ['confirmed', 'processing', 'shipped']:
+            logger.info(f"🔄 Cancelling order {order_number} - restoring inventory...")
+
+            # Restore quantities to inventory
+            with sqlite3.connect(SQLITE_PATH) as products_conn:
+                for item in order_items:
+                    products_conn.execute(
+                        "UPDATE products SET quantity = quantity + ? WHERE id = ?",
+                        (item["quantity"], item["product_id"])
+                    )
+                    logger.info(f"  ✓ Restored {item['quantity']} units to product ID {item['product_id']}")
+
+                products_conn.commit()
+
+            logger.info(f"✅ Inventory restored for order {order_number}")
+
+        # Update order status
+        with order_db._get_connection() as conn:
+            conn.execute(
+                "UPDATE orders SET status = ? WHERE id = ?",
+                (status, order_id)
+            )
+            conn.commit()
+
+        logger.info(f"✅ Order {order_number} status: {old_status} → {status}")
+
+        return {
+            "success": True,
+            "message": f"Order status updated to {status}",
+            "inventory_updated": status == 'confirmed' or (
+                        status == 'cancelled' and old_status in ['confirmed', 'processing', 'shipped'])
+        }
+
+    except sqlite3.IntegrityError as e:
+        logger.error(f"❌ Database integrity error: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "Database error"}
+        )
+    except Exception as e:
+        logger.error(f"❌ Error updating order status: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": f"Failed to update status: {str(e)}"}
+        )
+
+
+# Admin: Delete order
+@app.post("/api/admin/orders/{order_id}/delete")
+async def delete_order(order_id: int, current_user: dict = Depends(get_current_user)):
+    """Delete an order - requires authentication"""
+    try:
+        with order_db._get_connection() as conn:
+            # Delete order items first (foreign key constraint)
+            conn.execute("DELETE FROM order_items WHERE order_id = ?", (order_id,))
+            # Delete the order
+            conn.execute("DELETE FROM orders WHERE id = ?", (order_id,))
+            conn.commit()
+
+        logger.info(f"✅ Order #{order_id} deleted")
+        return {"success": True, "message": "Order deleted"}
+    except Exception as e:
+        logger.error(f"❌ Error deleting order: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "Failed to delete order"}
+        )
+
+
+# Admin: Order Management Page
+@app.get("/admin/orders", response_class=HTMLResponse)
+async def admin_orders_page(request: Request, current_user: dict = Depends(get_current_user)):
+    """Admin order management page"""
+    return templates.TemplateResponse("admin_orders.html", {
+        "request": request,
+        "user": current_user
+    })
+
+
+@app.get("/api/admin/orders/{order_id}/stock-check")
+async def check_order_stock(order_id: int, current_user: dict = Depends(get_current_user)):
+    """Check stock availability for an order"""
+    try:
+        # Get order items
+        with order_db._get_connection() as conn:
+            order_items = conn.execute("""
+                SELECT oi.product_id, oi.brand, oi.model, oi.quantity as ordered_qty
+                FROM order_items oi
+                WHERE oi.order_id = ?
+            """, (order_id,)).fetchall()
+
+        # Check current stock
+        with sqlite3.connect(SQLITE_PATH) as products_conn:
+            products_conn.row_factory = sqlite3.Row
+            stock_status = []
+
+            for item in order_items:
+                product = products_conn.execute(
+                    "SELECT quantity FROM products WHERE id = ?",
+                    (item["product_id"],)
+                ).fetchone()
+
+                current_stock = product["quantity"] if product else 0
+
+                stock_status.append({
+                    "product_id": item["product_id"],
+                    "brand": item["brand"],
+                    "model": item["model"],
+                    "ordered_qty": item["ordered_qty"],
+                    "current_stock": current_stock,
+                    "available": current_stock >= item["ordered_qty"],
+                    "status": "ok" if current_stock >= item["ordered_qty"] else ("low" if current_stock > 0 else "out")
+                })
+
+        return {"success": True, "items": stock_status}
+
+    except Exception as e:
+        logger.error(f"❌ Error checking stock: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": str(e)}
+        )
 
 @app.exception_handler(HTTPException)
 async def http_handler(request: Request, exc: HTTPException):
