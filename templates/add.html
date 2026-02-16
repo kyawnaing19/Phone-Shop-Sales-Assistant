@@ -184,4 +184,71 @@
         </form>
     </div>
 </div>
+<script>
+// ===================================================================
+// CACHE INVALIDATION - After adding new product
+// ===================================================================
+async function invalidateChatbotCache() {
+    try {
+        console.log('🔄 Invalidating chatbot cache after product addition...');
+
+        const response = await fetch('/api/admin/invalidate-cache', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            console.log('✅ Cache invalidated:', result.cleared_caches);
+        }
+    } catch (error) {
+        console.error('❌ Cache invalidation error:', error);
+    }
+}
+
+// Intercept form submission
+document.querySelector('form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const form = e.target;
+    const formData = new FormData(form);
+    const submitBtn = form.querySelector('button[type="submit"]');
+
+    // Show loading
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Adding Product...';
+
+    try {
+        const response = await fetch(form.action, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (response.ok) {
+            console.log('✅ Product added successfully');
+
+            // CRITICAL: Invalidate cache
+            await invalidateChatbotCache();
+
+            // Show success and redirect
+            alert('Product added successfully! Chatbot updated.');
+            window.location.href = '/inventory';
+        } else {
+            alert('Failed to add product');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        }
+    } catch (error) {
+        console.error('❌ Error:', error);
+        alert('An error occurred');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+    }
+});
+</script>
+
 {% endblock %}

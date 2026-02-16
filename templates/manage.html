@@ -72,8 +72,8 @@
                 </div>
             </div>
 
-            <form id="updateFormElement" action="" method="POST" class="space-y-8">
-                <input type="hidden" name="product_id" id="form_product_id">
+           <form id="updateFormElement" action="" method="POST" class="space-y-8">
+    <input type="hidden" name="product_id" id="form_product_id">
 
                 <!-- Basic Information Section -->
                 <div class="space-y-6">
@@ -252,6 +252,44 @@
 </div>
 
 <script>
+
+    // ===================================================================
+// CACHE INVALIDATION - Call this after product updates
+// ===================================================================
+async function invalidateChatbotCache() {
+    try {
+        console.log('🔄 Invalidating chatbot cache...');
+
+        const response = await fetch('/api/admin/invalidate-cache', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            console.log('✅ Chatbot cache invalidated:', result);
+            console.log('   Cleared:', result.cleared_caches?.join(', '));
+
+            // Optional: Show success notification
+            showNotification('Chatbot updated with latest data', 'success');
+        } else {
+            console.error('❌ Cache invalidation failed:', result);
+        }
+    } catch (error) {
+        console.error('❌ Cache invalidation error:', error);
+        // Non-critical error - don't block UI
+    }
+}
+
+function showNotification(message, type = 'info') {
+    // You can implement a toast notification here
+    // For now, just log it
+    console.log(`[${type.toUpperCase()}] ${message}`);
+}
+
 function updateForm() {
     const selector = document.getElementById('modelSelector');
     const selected = selector.options[selector.selectedIndex];
@@ -323,14 +361,32 @@ function confirmDelete() {
         document.body.removeChild(modal);
     });
 
-    // Delete button submits POST form
-    document.getElementById('deleteConfirmBtn').addEventListener('click', () => {
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = `/delete/${id}`;
-        document.body.appendChild(form);
-        form.submit();
-    });
+    // Delete button submits POST form and invalidates cache
+document.getElementById('deleteConfirmBtn').addEventListener('click', async () => {
+    try {
+        // Submit delete request
+        const response = await fetch(`/delete/${id}`, {
+            method: 'POST'
+        });
+
+        if (response.ok) {
+            console.log('✅ Product deleted');
+
+            // CRITICAL: Invalidate cache after deletion
+            await invalidateChatbotCache();
+
+            // Reload page
+            window.location.reload();
+        } else {
+            alert('Failed to delete product');
+        }
+
+        document.body.removeChild(modal);
+    } catch (error) {
+        console.error('❌ Delete error:', error);
+        alert('An error occurred');
+    }
+});
 
     // Close modal on click outside
     modal.addEventListener('click', (e) => {
@@ -357,6 +413,48 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
         const editArea = document.getElementById('editArea');
         if (!editArea.classList.contains('hidden')) resetSelection();
+    }
+});
+
+    // ===================================================================
+// INTERCEPT FORM SUBMIT - Invalidate cache after successful update
+// ===================================================================
+document.getElementById('updateFormElement').addEventListener('submit', async function(e) {
+    e.preventDefault(); // Prevent default form submission
+
+    const form = e.target;
+    const formData = new FormData(form);
+
+    try {
+        // Show loading state
+        const submitBtn = form.querySelector('button[type="submit"]');
+        const originalText = submitBtn.innerHTML;
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Updating...';
+
+        // Submit the form
+        const response = await fetch(form.action, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (response.ok) {
+            console.log('✅ Product updated successfully');
+
+            // CRITICAL: Invalidate cache after successful update
+            await invalidateChatbotCache();
+
+            // Redirect or reload
+            window.location.reload();
+        } else {
+            console.error('❌ Update failed');
+            alert('Failed to update product');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        }
+    } catch (error) {
+        console.error('❌ Error:', error);
+        alert('An error occurred');
     }
 });
 </script>

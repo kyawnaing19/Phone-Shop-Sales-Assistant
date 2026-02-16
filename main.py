@@ -1114,5 +1114,48 @@ async def handle_reset(current_user: dict = Depends(get_optional_user)):
 
     return {"status": "success", "message": "Conversation memory and order state cleared"}
 
+
+@app.post("/api/admin/invalidate-cache")
+async def invalidate_cache_endpoint(current_user: dict = Depends(get_current_user)):
+    """
+    Cache invalidation endpoint for admin panel.
+
+    Call this endpoint after:
+    - Adding new products (POST /add)
+    - Updating products (POST /update/{id})
+    - Changing stock quantities
+    - Deleting products (POST /delete/{id})
+
+    This ensures the chatbot sees fresh data immediately.
+
+    Args:
+        current_user: Authenticated admin user
+
+    Returns:
+        JSON with status and details
+    """
+    try:
+        result = logic.invalidate_product_cache()
+        logger.info(f"🔄 Cache invalidated by admin: {current_user.get('username', 'unknown')}")
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                **result
+            }
+        )
+    except Exception as e:
+        logger.error(f"❌ Cache invalidation failed: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": "Failed to invalidate cache",
+                "error": str(e)
+            }
+        )
+
+
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

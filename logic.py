@@ -121,7 +121,7 @@ def get_db_connection():
     finally:
         conn.close()
 
-
+@lru_cache(maxsize=128)
 def get_all_brands() -> List[str]:
     """Get ALL brands"""
     with get_db_connection() as conn:
@@ -130,7 +130,7 @@ def get_all_brands() -> List[str]:
     logger.info(f"📊 Brands: {len(brands)}")
     return brands
 
-
+@lru_cache(maxsize=128)
 def get_all_products() -> List[Dict]:
     """Get ALL products with new fields"""
     with get_db_connection() as conn:
@@ -143,7 +143,7 @@ def get_all_products() -> List[Dict]:
     logger.info(f"📊 Total products: {len(products)}")
     return products
 
-
+@lru_cache(maxsize=128)
 def get_models_by_brand(brand: str) -> List[Dict]:
     """Get ALL models for a brand"""
     with get_db_connection() as conn:
@@ -1540,3 +1540,82 @@ def reset_all_metrics():
     _cache.clear()
     _memory.clear()
     logger.info("🔄 Full reset")
+
+
+def invalidate_product_cache():
+    """
+    Invalidate all product-related caches when admin updates inventory.
+    Call this after ANY product/stock modification in admin panel.
+
+    This clears:
+    - Query cache (cached responses)
+    - Memory cache (reused contexts)
+    - LRU caches (if they exist)
+    - Entity extractor caches (brand/model lists)
+
+    Returns:
+        dict: Status report of cache invalidation
+    """
+    global _cache, _memory
+
+    logger.info("🔄 CACHE INVALIDATION REQUESTED")
+
+    # 1. Clear query cache (1-hour TTL responses)
+    _cache.clear()
+    logger.info("  ✓ Query cache cleared")
+
+    # 2. Clear memory/context cache
+    _memory.clear()
+    logger.info("  ✓ Memory cache cleared")
+
+    # 3. Clear LRU caches ONLY if they have cache_clear() method
+    cleared_lru = []
+
+    # Check and clear get_all_brands
+    if hasattr(get_all_brands, 'cache_clear'):
+        get_all_brands.cache_clear()
+        cleared_lru.append('get_all_brands')
+
+    # Check and clear get_all_products
+    if hasattr(get_all_products, 'cache_clear'):
+        get_all_products.cache_clear()
+        cleared_lru.append('get_all_products')
+
+    # Check and clear get_models_by_brand
+    if hasattr(get_models_by_brand, 'cache_clear'):
+        get_models_by_brand.cache_clear()
+        cleared_lru.append('get_models_by_brand')
+
+    if cleared_lru:
+        logger.info(f"  ✓ LRU caches cleared: {', '.join(cleared_lru)}")
+    else:
+        logger.info("  ℹ No LRU caches to clear (functions don't use @lru_cache)")
+
+    # 4. Clear entity extractor caches (if they exist)
+    cleared_entity = []
+    try:
+        if hasattr(entity_extractor, '_brand_cache'):
+            entity_extractor._brand_cache.clear()
+            cleared_entity.append('brand_cache')
+        if hasattr(entity_extractor, '_model_cache'):
+            entity_extractor._model_cache.clear()
+            cleared_entity.append('model_cache')
+
+        if cleared_entity:
+            logger.info(f"  ✓ Entity extractor caches cleared: {', '.join(cleared_entity)}")
+        else:
+            logger.info("  ℹ No entity extractor caches found")
+    except Exception as e:
+        logger.warning(f"  ⚠ Entity cache clear skipped: {e}")
+
+    logger.info("✅ ALL AVAILABLE CACHES INVALIDATED - Next query will fetch fresh data")
+
+    return {
+        "status": "success",
+        "message": "All chatbot caches cleared successfully",
+        "cleared_caches": [
+                              "query_cache",
+                              "memory_cache"
+                          ] + cleared_lru + cleared_entity,
+        "timestamp": datetime.now().isoformat()
+    }
