@@ -60,7 +60,7 @@ def validate_response(
     # List of common phone brands that LLMs often hallucinate
     external_brands = [
         # iPhone variants
-        'iphone', 'iphone 15', 'iphone 14', 'iphone 13', 'iphone 12',
+        'iphone', 'iphone 14', 'iphone 12',
         'iphone 15 pro', 'iphone 14 pro', 'iphone pro max',
 
         # Google Pixel
@@ -82,7 +82,7 @@ def validate_response(
 
         # Samsung flagship (often hallucinated with wrong specs)
         'galaxy s24', 'galaxy s23', 'galaxy s22',
-        'galaxy s24 ultra', 'galaxy s23 ultra',
+        'galaxy s23 ultra',
         'galaxy z fold', 'galaxy z flip',
 
         # Xiaomi flagship
@@ -200,9 +200,8 @@ def validate_response(
 
         # Generate fallback response (Myanmar language)
         fallback = f"""
-
-
-
+        
+        
 📞 ဖုန်း: 09-671698821
 📞 အခြား: 09-4355737883
 📍 လိပ်စာ: Gwat, Thaton

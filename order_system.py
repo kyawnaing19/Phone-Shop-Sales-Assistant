@@ -8,7 +8,7 @@
 ║  ✓ Order creation and tracking                                         ║
 ║  ✓ Order state management                                              ║
 ║  ✓ User authentication check                                           ║
-║  ✓ Strict keyword confirmation system                                  ║
+║  ✓ Numbered menu system (1, 2, 3, 4)                                  ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 """
 import secrets
@@ -430,6 +430,7 @@ class OrderDatabase:
         except Exception as e:
             logger.error(f"Error getting inventory status: {e}")
             return {"order_id": order_id, "items": [], "all_available": False, "error": str(e)}
+
     def get_product_by_partial_match(self, search_text: str) -> Optional[Dict]:
         """Search for product by partial match with smart model number extraction
 
@@ -596,7 +597,12 @@ class OrderDatabase:
             conn.commit()
 
     def generate_order_number(self) -> str:
+        """
+        Generate unique order number with format: ORD-YYYYMMDD-XXXX-RRRR
+        Example: ORD-20260215-0001-A7B2
+        """
         date_str = datetime.now().strftime("%Y%m%d")
+
         # Random စာသား ၄ လုံး ထည့်လိုက်မယ် (ဥပမာ - ORD-20260215-0006-A7B2)
         random_suffix = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(4))
 
@@ -608,6 +614,19 @@ class OrderDatabase:
             count = cursor.fetchone()[0]
 
         return f"ORD-{date_str}-{count + 1:04d}-{random_suffix}"
+
+    def get_product_by_id(self, product_id: int) -> Optional[Dict]:
+        """Get product details from products database"""
+        try:
+            with self._get_products_connection() as conn:
+                cursor = conn.execute("""
+                    SELECT * FROM products WHERE id = ?
+                """, (product_id,))
+                row = cursor.fetchone()
+                return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error fetching product: {e}")
+            return None
 
     def create_order(self, user_id: int, session: OrderSession) -> str:
         """Create order from session"""
@@ -701,23 +720,7 @@ class OrderDatabase:
 # ═══════════════════════════════════════════════════════════════════════════
 
 class OrderFlowManager:
-    """Manage order flow and state transitions"""
-
-    # Strict keywords for confirmation
-    KEYWORDS = {
-        "add_to_cart": "ADD TO CART",
-        "view_cart": "VIEW CART",
-        "add_more": "ADD MORE",
-        "browse": "BROWSE",
-        "checkout": "CHECKOUT",
-        "confirm_order": "CONFIRM ORDER",
-        "cancel": "CANCEL",
-        "clear_cart": "CLEAR CART",
-        "skip": "SKIP",
-        "pay_kbz": "PAY KBZ",
-        "pay_wave": "PAY WAVE",
-        "pay_cash": "PAY CASH"
-    }
+    """Manage order flow and state transitions - WITH NUMBERED MENU"""
 
     def __init__(self, db: OrderDatabase):
         self.db = db
@@ -725,10 +728,6 @@ class OrderFlowManager:
     def is_authenticated(self, user_id: Optional[int]) -> bool:
         """Check if user is authenticated"""
         return user_id is not None
-
-    def check_keyword(self, message: str, keyword: str) -> bool:
-        """Check if message matches strict keyword"""
-        return message.strip().upper() == keyword
 
     def handle_buy_intent(
             self,
@@ -738,8 +737,7 @@ class OrderFlowManager:
     ) -> Tuple[str, OrderState]:
         """
         Handle when user wants to buy a product
-
-        Returns: (response_message, new_state)
+        Supports: 1 (Add to Cart), 2 (Cancel)
         """
         # Check authentication
         if not self.is_authenticated(user_id):
@@ -748,21 +746,22 @@ class OrderFlowManager:
         # Load session
         session = self.db.load_session(user_id)
 
-        # If already in cart confirmation, check for keyword
+        # If already in cart confirmation, check for response
         if session.state == OrderState.CART_CONFIRM:
-            # Check for CANCEL
-            if self.check_keyword(message, self.KEYWORDS["cancel"]):
+            msg_upper = message.strip().upper()
+
+            # Check for CANCEL (2)
+            if msg_upper == '2':
                 session.state = OrderState.BROWSING
                 session.pending_product = None
                 self.db.save_session(user_id, session)
                 return "ကောင်းပါပြီ။ ဘာကူညီပေးရမလဲ?", OrderState.BROWSING
 
-            # Check for ADD TO CART
-            elif self.check_keyword(message, self.KEYWORDS["add_to_cart"]):
-                # Add to cart
+            # Check for ADD TO CART (1)
+            elif msg_upper == '1':
                 return self._add_to_cart(user_id, session)
             else:
-                # Re-prompt for correct keyword
+                # Re-prompt for correct input
                 return self._prompt_add_to_cart(session.pending_product), OrderState.CART_CONFIRM
 
         # New buy intent - store product and ask for confirmation
@@ -777,34 +776,38 @@ class OrderFlowManager:
             user_id: int,
             message: str
     ) -> Tuple[str, OrderState]:
-        """Handle cart management commands"""
+        """
+        Handle cart management commands
+        Supports: 1 (View Cart), 2 (Browse), 3 (Checkout), 4 (Clear Cart)
+        """
         session = self.db.load_session(user_id)
+        msg_upper = message.strip().upper()
 
-        # View cart
-        if self.check_keyword(message, self.KEYWORDS["view_cart"]):
+        # View cart (1)
+        if msg_upper == '1':
             return self._show_cart(session), OrderState.CART_MANAGEMENT
 
-        # Browse more / Add more items (same action)
-        elif self.check_keyword(message, self.KEYWORDS["browse"]) or self.check_keyword(message, self.KEYWORDS["add_more"]):
+        # Browse more (2)
+        elif msg_upper == '2':
             session.state = OrderState.BROWSING
             self.db.save_session(user_id, session)
             return "ကောင်းပါပြီ။ ဘယ်ဖုန်း ကြည့်ချင်ပါသလဲ? ပြောပြပါ။", OrderState.BROWSING
 
-        # Clear cart
-        elif self.check_keyword(message, self.KEYWORDS["clear_cart"]):
-            session.cart.clear()
-            session.state = OrderState.BROWSING
-            self.db.save_session(user_id, session)
-            return "✅ Cart ကို ရှင်းလင်းပြီးပါပြီ။\n\nဘာဝယ်ချင်ပါသလဲ? ပြောပြပါ။", OrderState.BROWSING
-
-        # Checkout
-        elif self.check_keyword(message, self.KEYWORDS["checkout"]):
+        # Checkout (3)
+        elif msg_upper == '3':
             if len(session.cart) == 0:
-                return "Cart ထဲမှာ ပစ္စည်း မရှိသေးပါ။ ဖုန်း ရွေးပြီး 'ADD TO CART' လို့ ရိုက်ပေးပါ။", OrderState.BROWSING
+                return "Cart ထဲမှာ ပစ္စည်း မရှိသေးပါ။", OrderState.BROWSING
 
             session.state = OrderState.CHECKOUT_CONFIRM
             self.db.save_session(user_id, session)
             return self._show_checkout_confirmation(session), OrderState.CHECKOUT_CONFIRM
+
+        # Clear cart (4)
+        elif msg_upper == '4':
+            session.cart.clear()
+            session.state = OrderState.BROWSING
+            self.db.save_session(user_id, session)
+            return "✅ Cart ကို ရှင်းလင်းပြီးပါပြီ။\n\nဘာဝယ်ချင်ပါသလဲ?", OrderState.BROWSING
 
         # Invalid command
         else:
@@ -815,11 +818,16 @@ class OrderFlowManager:
             user_id: int,
             message: str
     ) -> Tuple[str, OrderState]:
-        """Handle checkout process"""
+        """
+        Handle checkout process
+        Supports numbers for: checkout confirm, payment selection
+        """
         session = self.db.load_session(user_id)
+        msg_upper = message.strip().upper()
 
-        # Check for CANCEL at any stage
-        if self.check_keyword(message, self.KEYWORDS["cancel"]):
+        # Check for CANCEL at any stage (2 in checkout confirm, or 4 in payment)
+        if (session.state == OrderState.CHECKOUT_CONFIRM and msg_upper == '2') or \
+           (session.state == OrderState.PAYMENT_SELECT and msg_upper == '4'):
             session.state = OrderState.BROWSING
             session.pending_product = None
             # Keep cart but reset checkout details
@@ -831,12 +839,12 @@ class OrderFlowManager:
             self.db.save_session(user_id, session)
             return "❌ Order ကို ပယ်ဖျက်လိုက်ပါပြီ။ Cart ထဲမှာ ပစ္စည်းတွေ ရှိနေဆဲဖြစ်ပါတယ်။\n\nထပ်မံ ဝယ်ယူလိုပါက ပြန်လည် ပြောပြပေးပါ။", OrderState.BROWSING
 
-        # Checkout confirmation
+        # Checkout confirmation (1 = confirm, 2 = cancel)
         if session.state == OrderState.CHECKOUT_CONFIRM:
-            if self.check_keyword(message, self.KEYWORDS["confirm_order"]):
+            if msg_upper == '1':
                 session.state = OrderState.ADDRESS_INPUT
                 self.db.save_session(user_id, session)
-                return "လိပ်စာ ပေးပို့ပါ။\n\n(ဥပမာ: No.45, Pyay Road, Yangon)\n\n• 'CANCEL' - မတင်တော့ဘူး", OrderState.ADDRESS_INPUT
+                return "လိပ်စာ ပေးပို့ပါ။\n\n(ဥပမာ: No.45, Pyay Road, Yangon)", OrderState.ADDRESS_INPUT
             else:
                 return self._show_checkout_confirmation(session), OrderState.CHECKOUT_CONFIRM
 
@@ -845,37 +853,37 @@ class OrderFlowManager:
             session.delivery_address = message.strip()
             session.state = OrderState.PHONE_INPUT
             self.db.save_session(user_id, session)
-            return "ဖုန်းနံပါတ် ပေးပို့ပါ။\n\n(ဥပမာ: 09771234567)\n\n• 'CANCEL' - မတင်တော့ဘူး", OrderState.PHONE_INPUT
+            return "ဖုန်းနံပါတ် ပေးပို့ပါ။\n\n(ဥပမာ: 09771234567)", OrderState.PHONE_INPUT
 
         # Phone input
         elif session.state == OrderState.PHONE_INPUT:
             phone = message.strip()
             if not self._validate_phone(phone):
-                return "ဖုန်းနံပါတ် မှားယွင်းနေပါသည်။ ထပ်မံ ရိုက်ထည့်ပေးပါ။\n\n(ဥပမာ: 09771234567)\n\n• 'CANCEL' - မတင်တော့ဘူး", OrderState.PHONE_INPUT
+                return "ဖုန်းနံပါတ် မှားယွင်းနေပါသည်။ ထပ်မံ ရိုက်ထည့်ပေးပါ။\n\n(ဥပမာ: 09771234567)", OrderState.PHONE_INPUT
 
             session.phone_number = phone
             session.state = OrderState.PAYMENT_SELECT
             self.db.save_session(user_id, session)
             return self._show_payment_options(session), OrderState.PAYMENT_SELECT
 
-        # Payment selection
+        # Payment selection (1 = KBZ, 2 = Wave, 3 = Cash, 4 = Cancel)
         elif session.state == OrderState.PAYMENT_SELECT:
-            if self.check_keyword(message, self.KEYWORDS["pay_kbz"]):
+            if msg_upper == '1':
                 session.payment_method = PaymentMethod.KBZ.value
-            elif self.check_keyword(message, self.KEYWORDS["pay_wave"]):
+            elif msg_upper == '2':
                 session.payment_method = PaymentMethod.WAVE.value
-            elif self.check_keyword(message, self.KEYWORDS["pay_cash"]):
+            elif msg_upper == '3':
                 session.payment_method = PaymentMethod.CASH.value
             else:
                 return self._show_payment_options(session), OrderState.PAYMENT_SELECT
 
             session.state = OrderState.NOTE_INPUT
             self.db.save_session(user_id, session)
-            return "မှတ်ချက် ရှိရင် ရိုက်ပါ။\n\nမရှိရင် 'SKIP' လို့ ရိုက်ပါ။\n\n• 'CANCEL' - မတင်တော့ဘူး", OrderState.NOTE_INPUT
+            return "မှတ်ချက် ရှိရင် ရိုက်ပါ။\n\nမရှိရင် 'SKIP' လို့ ရိုက်ပါ။", OrderState.NOTE_INPUT
 
         # Note input
         elif session.state == OrderState.NOTE_INPUT:
-            if self.check_keyword(message, self.KEYWORDS["skip"]):
+            if msg_upper == 'SKIP':
                 session.note = None
             else:
                 session.note = message.strip()
@@ -887,13 +895,12 @@ class OrderFlowManager:
                 return f"""💳 {session.payment_method} ဖြင့် ငွေပေးချေမည်။
 
 Transaction Number ရိုက်ထည့်ပေးပါ။
-(ငွေလွှဲပြီးသည့်အခါ ရရှိသော နံပါတ်)
-
-• 'CANCEL' - မတင်တော့ဘူး""", OrderState.TRANSACTION_INPUT
+(ငွေလွှဲပြီးသည့်အခါ ရရှိသော နံပါတ်)""", OrderState.TRANSACTION_INPUT
             else:
                 # Cash on delivery - no transaction needed, create order directly
                 order_number = self.db.create_order(user_id, session)
                 session.state = OrderState.ORDER_COMPLETE
+                self.db.save_session(user_id, session)
                 return self._show_order_success(order_number, session), OrderState.ORDER_COMPLETE
 
         # Transaction number input (for digital payments only)
@@ -903,13 +910,32 @@ Transaction Number ရိုက်ထည့်ပေးပါ။
             # Create order
             order_number = self.db.create_order(user_id, session)
             session.state = OrderState.ORDER_COMPLETE
+            self.db.save_session(user_id, session)
 
             return self._show_order_success(order_number, session), OrderState.ORDER_COMPLETE
+
+        # Order complete state - reset to browsing
+        elif session.state == OrderState.ORDER_COMPLETE:
+            # Order is done, reset session for new browsing
+            session.state = OrderState.BROWSING
+            session.clear_cart()
+            session.pending_product = None
+            session.delivery_address = None
+            session.phone_number = None
+            session.payment_method = None
+            session.note = None
+            session.transaction_number = None
+            self.db.save_session(user_id, session)
+
+            # Return a friendly message
+            return """✅ Order အောင်ပြီးပါပြီ။ ကျေးဇူးတင်ပါတယ်!
+
+ဘာကူညီပေးရမလဲ? ဖုန်းများ ဆက်ကြည့်လို့ရပါတယ်။""", OrderState.BROWSING
 
         return "စနစ်တွင် ပြဿနာ ရှိနေပါသည်။", OrderState.BROWSING
 
     # ═══════════════════════════════════════════════════════════════════════
-    # HELPER METHODS
+    # HELPER METHODS - NUMBERED MENUS
     # ═══════════════════════════════════════════════════════════════════════
 
     def _guest_cannot_order(self) -> str:
@@ -923,7 +949,7 @@ Order တင်ချင်ရင် အရင် Login လုပ်ပေးပ
 Guest အနေဖြင့် ဖုန်းတွေ ကြည့်လို့ရပါတယ်။"""
 
     def _prompt_add_to_cart(self, product: Dict) -> str:
-        """Prompt user to add product to cart"""
+        """Prompt user to add product to cart - NUMBERED MENU"""
         return f"""ကောင်းပါပြီ! {product['brand']} {product['model']} ကို cart ထဲထည့်ချင်ပါသလား?
 
 📱 {product['brand']} {product['model']}
@@ -931,8 +957,9 @@ Guest အနေဖြင့် ဖုန်းတွေ ကြည့်လို
 🎨 {product.get('color', 'N/A')}
 💰 {product['price']:,} Ks
 
-• 'ADD TO CART' - Cart ထဲထည့်မယ်
-• 'CANCEL' - မလုပ်တော့ဘူး"""
+ရွေးချယ်ပါ:
+1 - Cart ထဲထည့်မယ်
+2 - မလုပ်တော့ဘူး"""
 
     def _add_to_cart(self, user_id: int, session: OrderSession) -> Tuple[str, OrderState]:
         """Add pending product to cart"""
@@ -965,15 +992,16 @@ Guest အနေဖြင့် ဖုန်းတွေ ကြည့်လို
 
         response = f"""✅ {product['brand']} {product['model']} ကို cart ထဲထည့်ပြီးပါပြီ။
 
-ဘာဆက်လုပ်ချင်ပါသလဲ?
-• 'VIEW CART' - Cart ကြည့်မယ်
-• 'BROWSE' - ဆက်ကြည့်မယ်
-• 'CHECKOUT' - Order တင်မယ်"""
+ရွေးချယ်ပါ:
+1 - Cart ကြည့်မယ်
+2 - ပစ္စည်း ဆက်ကြည့်မယ်
+3 - Order တင်မယ်
+4 - Cart ရှင်းမယ်"""
 
         return response, OrderState.CART_MANAGEMENT
 
     def _show_cart(self, session: OrderSession) -> str:
-        """Display cart contents"""
+        """Display cart contents - NUMBERED MENU"""
         if len(session.cart) == 0:
             return "Cart ထဲမှာ ပစ္စည်း မရှိသေးပါ။"
 
@@ -985,26 +1013,25 @@ Guest အနေဖြင့် ဖုန်းတွေ ကြည့်လို
         cart_text += f"━━━━━━━━━━━━━━━━━━━━\n"
         cart_text += f"💰 စုစုပေါင်း: {session.get_cart_total():,} Ks\n\n"
 
-        cart_text += """ဘာဆက်လုပ်ချင်ပါသလဲ?
-• 'BROWSE' - ဆက်ကြည့်မယ်
-• 'CHECKOUT' - Order တင်မယ်
-• 'CLEAR CART' - Cart ရှင်းမယ်"""
+        cart_text += """ရွေးချယ်ပါ:
+1 - Cart ကြည့်မယ်
+2 - ပစ္စည်း ဆက်ကြည့်မယ်
+3 - Order တင်မယ်
+4 - Cart ရှင်းမယ်"""
 
         return cart_text
 
     def _show_cart_options(self) -> str:
-        """Show cart management options"""
-        return """ဘာလုပ်ချင်ပါသလဲ?
+        """Show cart management options - NUMBERED MENU"""
+        return """ရွေးချယ်ပါ:
 
-• 'VIEW CART' - Cart ကြည့်မယ်
-• 'BROWSE' - ပစ္စည်း ဆက်ကြည့်မယ်
-• 'CHECKOUT' - Order တင်မယ်
-• 'CLEAR CART' - Cart ရှင်းမယ်
-
-Keyword အတိအကျ ရိုက်ပေးပါ။"""
+1 - Cart ကြည့်မယ်
+2 - ပစ္စည်း ဆက်ကြည့်မယ်
+3 - Order တင်မယ်
+4 - Cart ရှင်းမယ်"""
 
     def _show_checkout_confirmation(self, session: OrderSession) -> str:
-        """Show checkout confirmation"""
+        """Show checkout confirmation - NUMBERED MENU"""
         cart_summary = ""
         for item in session.cart:
             cart_summary += f"• {item.brand} {item.model} - {item.get_subtotal():,} Ks\n"
@@ -1015,11 +1042,12 @@ Keyword အတိအကျ ရိုက်ပေးပါ။"""
 ━━━━━━━━━━━━━━━━━━━━
 💰 စုစုပေါင်း: {session.get_cart_total():,} Ks
 
-• 'CONFIRM ORDER' - Order တင်မယ်
-• 'CANCEL' - မတင်တော့ဘူး"""
+ရွေးချယ်ပါ:
+1 - Order တင်မယ်
+2 - မတင်တော့ဘူး"""
 
     def _show_payment_options(self, session: OrderSession) -> str:
-        """Show payment method options with order summary"""
+        """Show payment method options - NUMBERED MENU"""
         # Build cart summary
         cart_summary = ""
         for item in session.cart:
@@ -1036,12 +1064,10 @@ Keyword အတိအကျ ရိုက်ပေးပါ။"""
 
 💳 Payment method ရွေးပါ:
 
-• 'PAY KBZ' - KBZ Pay
-• 'PAY WAVE' - Wave Money
-• 'PAY CASH' - Cash on Delivery
-• 'CANCEL' - မတင်တော့ဘူး
-
-Keyword အတိအကျ ရိုက်ပေးပါ။"""
+1 - KBZ Pay
+2 - Wave Money
+3 - Cash on Delivery
+4 - မတင်တော့ဘူး"""
 
     def _show_order_success(self, order_number: str, session: OrderSession) -> str:
         """Show order success message"""
@@ -1084,7 +1110,6 @@ Keyword အတိအကျ ရိုက်ပေးပါ။"""
 
 ကျေးဇူးတင်ပါတယ်! မကြာမီ ဆက်သွယ်ပါမယ်။"""
 
-
     def _validate_phone(self, phone: str) -> bool:
         """Validate Myanmar phone number"""
         import re
@@ -1119,10 +1144,11 @@ def reset_order_state(user_id: int, db: OrderDatabase):
 # ═══════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    print("Order System Module")
+    print("Order System Module - Numbered Menu Version")
     print("=" * 60)
     print("This module handles:")
     print("  • Shopping cart management")
     print("  • Order state flow")
     print("  • Order creation and tracking")
     print("  • User authentication checks")
+    print("  • Numbered menu system (1, 2, 3, 4)")

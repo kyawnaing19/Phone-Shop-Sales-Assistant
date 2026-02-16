@@ -884,7 +884,7 @@ User မေးခွန်း: {understanding.standalone_query}
 
 ⚠️ CRITICAL: Use ONLY information from shop policies above.
 DO NOT use general knowledge. If not in policies, say you don't have that information.
-
+And also answer short to the main points.
 မြန်မာလို ရှင်းလင်းစွာ ဖြေကြားပေးပါ။"""
         else:
             return f"""သင်သည် Shwee Shaung Mobile ၏ အရောင်းဝန်ထမ်း ဖြစ်သည်။{personalization}
@@ -1080,6 +1080,7 @@ If ANY answer is NO → Rewrite response using ONLY inventory above
 -Strict Boundary (IMPORTANT): If the answer is found, DO NOT include any follow-up suggestions, shop phone numbers, or addresses. Stop the response immediately after providing the factual answer.
 -Fallback Logic: Only if the context contains zero relevant information should you state, "တိကျတဲ့အချက်အလက် ရှာမတွေ့ပါဘူး" followed by the shop's contact details and address.
 -Prohibited Content: Remove all conversational fillers, unnecessary pleasantries, advice, and proactive suggestions.
+-Answer short to the main points.
 -မြန်မာလို ယဉ်ကျေးစွာ ဖြေကြားပေးပါ။"""
 
     return final_prompt
