@@ -112,17 +112,21 @@ def validate_response(
     # ========================================
     # CHECK 2: Price Validation
     # ========================================
-    # Extract mentioned prices using multiple patterns
+    # Strip commas from comma-formatted numbers BEFORE matching prices.
+    # Without this, "1,690,000 MMK" leaks "000 MMK" → false 0 MMK violation.
+    response_no_commas = re.sub(r'(\d),(\d)', r'\1\2', response_lower)
+    response_no_commas = re.sub(r'(\d),(\d)', r'\1\2', response_no_commas)  # second pass for ≥7-digit
+
     price_patterns = [
-        r'(\d{3,7})\s*(?:kyat|mmk|ကျပ်)',  # "500000 MMK" or "500000 ကျပ်"
-        r'(\d{1,2})\s*(?:lakh|lakhs|သိန်း)',  # "5 lakhs" or "5 သိန်း"
-        r'(\d{3,7})\s*MMK',  # "500000 MMK"
-        r'MMK\s*(\d{3,7})',  # "MMK 500000"
+        r'(?<!\d)(\d{3,7})\s*(?:kyat|mmk|ကျပ်)',  # negative lookbehind blocks mid-number match
+        r'(?<!\d)(\d{1,2})\s*(?:lakh|lakhs|သိန်း)',  # "5 lakhs" or "5 သိန်း"
+        r'(?<!\d)(\d{3,7})\s*MMK',  # "500000 MMK"
+        r'MMK\s*(\d{3,7})(?!\d)',   # "MMK 500000"
     ]
 
     mentioned_prices = []
     for pattern in price_patterns:
-        matches = re.findall(pattern, response_lower, re.IGNORECASE)
+        matches = re.findall(pattern, response_no_commas, re.IGNORECASE)
         for match in matches:
             try:
                 price_num = int(match)

@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import sqlite3
+import re
 from datetime import datetime, timedelta
 from typing import Optional, Dict
 
@@ -420,7 +421,103 @@ async def get_session(request: Request, current_user: dict = Depends(get_optiona
 
 
 
-# Modify the chat_stream function:
+# ═══════════════════════════════════════════════════════════════════════════
+# PRODUCT NAME EXTRACTION FROM ASSISTANT RESPONSE
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _extract_product_name_from_response(response_text: str) -> Optional[str]:
+    """
+    Extract just the product name from an LLM assistant response so it can
+    be used as a DB search string for the "I want to buy it" fallback.
+
+    Problem this solves
+    -------------------
+    When a user says "I want to buy it", main.py walked back through history
+    and previously passed the ENTIRE assistant message to get_product_by_partial_match().
+    That message contains Myanmar text, markdown, phone numbers, and addresses,
+    which produced hundreds of bogus tokens and matched the wrong product.
+
+    Strategy (priority order)
+    -------------------------
+    1. Bold/italic markdown:  **Brand Model**  or  *Brand Model*
+       Most reliable — the LLM explicitly marks the product name.
+    2. Line scan: find a line with a known brand token that contains
+       no Myanmar text, no phone numbers, and no price patterns.
+       Grab up to 6 English words from the brand token onwards.
+
+    Returns None if no confident product name can be extracted.
+
+    Examples
+    --------
+    "**Redmi Note 15 Pro Plus** ..."       →  "Redmi Note 15 Pro Plus"
+    "📱 iPhone 17 Pro Max\\n💾 8GB RAM..."  →  "iPhone 17 Pro Max"
+    "ကောင်းပါပြီ! Samsung Galaxy S24 ..."  →  "Samsung Galaxy S24"
+    "entire LLM response in Myanmar..."    →  None  (safe — shows not-found)
+    """
+    if not response_text:
+        return None
+
+    KNOWN_BRANDS = {
+        'iphone', 'apple', 'samsung', 'redmi', 'xiaomi', 'poco',
+        'oppo', 'vivo', 'realme', 'oneplus', 'google', 'pixel',
+        'nokia', 'tecno', 'itel', 'huawei', 'motorola',
+    }
+
+    # ── Strategy 1: bold/italic markdown  **Brand Model**  or  *Brand Model*
+    bold_matches = re.findall(r'\*{1,2}([A-Za-z0-9 ]+?)\*{1,2}', response_text)
+    for m in bold_matches:
+        clean = m.strip()
+        lower = clean.lower()
+        if any(b in lower for b in KNOWN_BRANDS) and re.search(r'[A-Za-z0-9]', clean):
+            logger.info(f"🏷️ Extracted from markdown: '{clean}'")
+            return clean
+
+    # ── Strategy 2: line-by-line scan for brand token in English text
+    for line in response_text.splitlines():
+        line = line.strip()
+        # Skip lines dominated by Myanmar script
+        myanmar_chars = len(re.findall(r'[\u1000-\u109f]', line))
+        total_chars   = len(line)
+        if total_chars > 0 and myanmar_chars / total_chars > 0.2:
+            continue
+        # Skip lines with phone numbers or prices
+        if re.search(r'09[-\d]{6,}', line):
+            continue
+        if re.search(r'\d{3,}[,\s]*(ks|mmk)|သိန်|ကျပ်', line, re.IGNORECASE):
+            continue
+
+        line_lower = line.lower()
+        for brand in KNOWN_BRANDS:
+            if brand in line_lower:
+                # Strip non-ASCII (emoji, Myanmar) and markdown punctuation
+                ascii_only = re.sub(r'[^\x20-\x7e]', ' ', line)
+                ascii_only = re.sub(r'[*_~`#|]', ' ', ascii_only)
+                ascii_only = re.sub(r'\s+', ' ', ascii_only).strip()
+
+                words = ascii_only.split()
+                brand_idx = next(
+                    (i for i, w in enumerate(words) if brand in w.lower()), None
+                )
+                if brand_idx is not None:
+                    phrase_words = words[brand_idx: brand_idx + 6]
+                    # Drop trailing spec/price words
+                    spec_pat = re.compile(
+                        r'^(\d+gb|\d+tb|ram|rom|black|white|blue|red|gold|silver|'
+                        r'pink|purple|gray|grey|ks|mmk|\d[\d,]+)$',
+                        re.IGNORECASE
+                    )
+                    while phrase_words and spec_pat.match(phrase_words[-1]):
+                        phrase_words.pop()
+
+                    phrase = ' '.join(phrase_words).strip()
+                    if phrase and re.search(r'[a-z0-9]', phrase, re.IGNORECASE):
+                        logger.info(f"🏷️ Extracted from line: '{phrase}'")
+                        return phrase
+
+    logger.warning("🏷️ Could not extract product name from response")
+    return None
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # CHAT STREAM WITH ORDERING SYSTEM INTEGRATION
 # ═══════════════════════════════════════════════════════════════════════════
@@ -444,6 +541,9 @@ async def chat_stream(request: Request, current_user: dict = Depends(get_optiona
         title = "ကို" if gender in ["male", "ကျား"] else "မ"
         user_context = f"ဝယ်သူအမည်မှာ {title}{name} ဖြစ်သည်။"
 
+    # Numeric menu inputs: "1", "2", "3", "4"
+    _is_menu_input = bool(re.match(r'^\s*[1-4]\s*$', message.strip()))
+
     async def generate():
         try:
             llm = get_llm(model_type)
@@ -455,41 +555,45 @@ async def chat_stream(request: Request, current_user: dict = Depends(get_optiona
             logger.info(f"🛒 Order State: {order_state.value}")
 
             # ═══════════════════════════════════════════════════
-            # STEP 2: Handle Order Flow (if in ordering state)
+            # STEP 2: Handle Order Flow (if in active ordering state)
+            #
+            # KEY RULE: CART_MANAGEMENT only intercepts NUMERIC inputs.
+            # Non-numeric messages (e.g. "i want to buy vivo v60") must
+            # fall through to STEP 3 so the LLM pipeline handles them.
             # ═══════════════════════════════════════════════════
-            if order_state != OrderState.BROWSING and user_id:
-                # User is in ordering process
+            in_order_flow = (
+                    order_state != OrderState.BROWSING
+                    and user_id
+                    # For CART_MANAGEMENT, only intercept if it's a menu number
+                    and not (order_state == OrderState.CART_MANAGEMENT and not _is_menu_input)
+            )
+
+            if in_order_flow:
                 response = ""
                 new_state = order_state
 
-                # Handle different order states
                 if order_state == OrderState.CART_CONFIRM:
-                    # User is confirming whether to add to cart
-                    # This needs to go through handle_buy_intent which checks for "ADD TO CART"
                     session = order_db.load_session(user_id)
                     if session.pending_product:
                         response, new_state = order_manager.handle_buy_intent(
                             user_id, session.pending_product, message
                         )
                     else:
-                        # No pending product - reset to browsing
                         response = "ပစ္စည်း ရွေးထားခြင်း မရှိပါ။ ဖုန်း ရွေးပြီး 'I want to buy' လို့ ပြောပါ။"
                         new_state = OrderState.BROWSING
                         session.state = OrderState.BROWSING
                         order_db.save_session(user_id, session)
 
                 elif order_state == OrderState.CART_MANAGEMENT:
-                    # User is managing cart (VIEW CART, ADD MORE, CHECKOUT)
+                    # Only numeric inputs reach here (enforced by in_order_flow above)
                     response, new_state = order_manager.handle_cart_management(user_id, message)
 
                 else:
-                    # All other states (checkout flow: address, phone, payment, etc.)
+                    # All other checkout states: address, phone, payment, note, transaction
                     response, new_state = order_manager.handle_checkout_flow(user_id, message)
 
-                # Stream the response
                 yield f"data: {json.dumps({'text': response})}\n\n"
 
-                # Save to database
                 if session_id:
                     try:
                         conn = get_users_db_conn()
@@ -505,6 +609,14 @@ async def chat_stream(request: Request, current_user: dict = Depends(get_optiona
                 logger.info(f"✅ Order flow handled: {order_state.value} → {new_state.value}")
                 return
 
+            # Non-numeric message while in CART_MANAGEMENT — reset state to browsing
+            # so the LLM pipeline starts clean (e.g. "i want to buy vivo v60")
+            if order_state == OrderState.CART_MANAGEMENT and not _is_menu_input and user_id:
+                session = order_db.load_session(user_id)
+                session.state = OrderState.BROWSING
+                order_db.save_session(user_id, session)
+                logger.info("🔄 Non-numeric in cart_management → reset to browsing, continuing to LLM")
+
             # ═══════════════════════════════════════════════════
             # STEP 3: Get final prompt with understanding
             # ═══════════════════════════════════════════════════
@@ -516,131 +628,212 @@ async def chat_stream(request: Request, current_user: dict = Depends(get_optiona
             # STEP 4: Check for Buy Intent
             # ═══════════════════════════════════════════════════
             if understanding.intent == Intent.BUY_PRODUCT:
-                # Check authentication first
                 if not user_id:
-                    # Guest trying to buy - show login message
                     response = """⚠️ Guest အနေနဲ့ Order မတင်နိုင်ပါဘူး။
 
-Order တင်ချင်ရင် အရင် Login လုပ်ပေးပါ။
-
-📌 Login လုပ်ရန် သို့မဟုတ် Register လုပ်ရန် ညာဘက်ထောင့်က Menu ကို နှိပ်ပါ။
-
-Guest အနေဖြင့် ဖုန်းတွေ ကြည့်လို့ရပါတယ်။"""
-
+                    Order တင်ချင်ရင် အရင် Login လုပ်ပေးပါ။
+                    
+                    📌 Login လုပ်ရန် သို့မဟုတ် Register လုပ်ရန် ညာဘက်ထောင့်က Menu ကို နှိပ်ပါ။
+                    
+                    Guest အနေဖြင့် ဖုန်းတွေ ကြည့်လို့ရပါတယ်။"""
                     yield f"data: {json.dumps({'text': response})}\n\n"
-
                     if session_id:
                         try:
                             conn = get_users_db_conn()
                             conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
-                                       (session_id, "user", message))
+                                         (session_id, "user", message))
                             conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
-                                       (session_id, "assistant", response))
+                                         (session_id, "assistant", response))
                             conn.commit()
                             conn.close()
                         except Exception as e:
                             logger.error(f"❌ DB error: {e}")
-
                     logger.info("✅ Guest buy attempt blocked")
                     return
 
-                # User is authenticated - proceed with buy
-                # Extract product info from understanding
                 product = None
-                full_model = None  # Initialize to avoid undefined variable error
+                full_model = None
 
-                if understanding.models:
-                    # Models contain full name like "iPhone 17 Pro Max"
-                    full_model = understanding.models[0]
-                    logger.info(f"🔍 Searching for product: {full_model}")
+                # ── Product search ───────────────────────────────────────
+                # Determine if the user explicitly named a specific product.
+                # "i want to buy it" has no product tokens → vague.
+                # "i want to buy Samsung Galaxy S24 Ultra" has tokens → explicit.
+                # ─────────────────────────────────────────────────────────────
+                GENERIC_WORDS = {
+                    'i', 'want', 'to', 'buy', 'get', 'purchase', 'order',
+                    'please', 'can', 'me', 'a', 'the', 'this', 'that', 'it',
+                    'one', 'phone', 'product', 'item', 'one'
+                }
+                msg_meaningful = set(re.findall(r'[a-z0-9]+', message.lower())) - GENERIC_WORDS
+                user_named_product = len(msg_meaningful) > 0
 
-                    # Try to find product by full name first
-                    product = order_db.get_product_by_full_name(full_model)
+                product = None
 
-                    # If not found, try splitting brand and model
-                    if not product and understanding.brands:
-                        brand = understanding.brands[0]
-                        # Remove brand from full model to get just the model
-                        model = full_model.replace(brand, "").strip()
-                        logger.info(f"🔍 Trying split: brand='{brand}', model='{model}'")
-                        product = order_db.get_product_by_brand_model(brand, model)
-
-                # If still no product found and we have brands, try aggressive search
-                if not product and understanding.brands:
-                    brand = understanding.brands[0]
-                    logger.info(f"🔍 Aggressive search: looking for any {brand} model in message")
-                    # Try to find any product from this brand
+                if user_named_product:
+                    # User named something specific — search the raw message
                     product = order_db.get_product_by_partial_match(message)
+                    if product:
+                        logger.info(f"🔍 Matched from message: {product['brand']} {product['model']}")
 
-                # Last resort: try searching the entire message for product match
-                if not product:
-                    logger.info(f"🔍 Last resort: searching entire message for product match")
-                    product = order_db.get_product_by_partial_match(message)
+                # ── History fallback — ONLY for vague messages ────────────
+                # "i want to buy it" → scan recent history for last product.
+                # Never use this when user_named_product=True — that means the
+                # product simply isn't in the DB and should show not-found.
+                # ─────────────────────────────────────────────────────────────
+                # FIX Bug 2:
+                # "i want to buy it" — no product name in message.
+                # Scan recent conversation history for the last product the bot mentioned.
+                # This is more reliable than _memory which may not have model-level detail.
+                # History + memory fallback — ONLY for vague messages like "i want to buy it"
+
+                if not product and not user_named_product:
+                    # ── History fallback for vague messages like "I want to buy it" ──
+                    #
+                    # CRITICAL FIX: Do NOT pass the raw assistant message text to
+                    # get_product_by_partial_match(). The full response contains Myanmar
+                    # text, phone numbers, addresses, and markdown that produce hundreds
+                    # of bogus tokens and match the wrong product.
+                    #
+                    # Instead: extract only the product name from the assistant response
+                    # using _extract_product_name_from_response(), then search with that.
+                    #
+                    if history:
+                        for turn in reversed(history[-6:]):
+                            if turn.get("role") == "assistant":
+                                product_name = _extract_product_name_from_response(
+                                    turn["content"]
+                                )
+                                if product_name:
+                                    product = order_db.get_product_by_partial_match(product_name)
+                                    if product:
+                                        logger.info(
+                                            f"🧠 Found from history (name='{product_name}'): "
+                                            f"{product['brand']} {product['model']}"
+                                        )
+                                        break
+                                    else:
+                                        logger.info(
+                                            f"🧠 Extracted name '{product_name}' not in DB"
+                                        )
+                                else:
+                                    logger.info("🧠 No product name extractable from history turn")
+
+                    # ── Final fallback: logic memory (brands/models from last query) ──
+                    if not product:
+                        memory = logic.get_memory()
+                        if memory and memory.last_understanding:
+                            last = memory.last_understanding
+                            if last.models:
+                                logger.info(f"🧠 Using memory model: {last.models[0]}")
+                                product = order_db.get_product_by_full_name(last.models[0])
+                            if not product and last.brands:
+                                logger.info(f"🧠 Using memory brand: {last.brands[0]}")
+                                # Only use brand fallback if there is exactly one model
+                                # for that brand — avoids guessing when multiple exist
+                                brand_models = logic.get_models_by_brand(last.brands[0])
+                                if brand_models and len(brand_models) == 1:
+                                    product = order_db.get_product_by_partial_match(
+                                        f"{brand_models[0]['brand']} {brand_models[0]['model']}"
+                                    )
 
                 if product:
-                    # Handle buy intent through order manager
                     response, new_state = order_manager.handle_buy_intent(
                         user_id, product, message
                     )
-
                     yield f"data: {json.dumps({'text': response})}\n\n"
-
-                    # Save to database
                     if session_id:
                         try:
                             conn = get_users_db_conn()
                             conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
-                                       (session_id, "user", message))
+                                         (session_id, "user", message))
                             conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
-                                       (session_id, "assistant", response))
+                                         (session_id, "assistant", response))
                             conn.commit()
                             conn.close()
                         except Exception as e:
                             logger.error(f"❌ DB error: {e}")
-
                     logger.info(f"✅ Buy intent handled: {new_state.value}")
                     return
                 else:
-                    # Product not found - let LLM handle with normal flow
+                    # Product genuinely not in database — tell user clearly.
+                    # Never fall through to LLM here: it will hallucinate a product
+                    # or silently confirm the wrong one.
                     search_term = full_model if full_model else message
-                    logger.warning(f"⚠️ Product not found: {search_term} - falling back to LLM")
-                    # Continue to normal LLM flow below
+                    logger.warning(f"⚠️ Product not found in DB: {search_term}")
+
+                    # Build a helpful "not available" response using real DB data
+                    not_found_brand = understanding.brands[0] if understanding.brands else None
+                    if not_found_brand:
+                        available = logic.get_models_by_brand(not_found_brand)
+                        if available:
+                            model_lines = "\n".join(
+                                f"📱 {p['model']} — {p['price']:,} Ks"
+                                for p in available[:8]
+                            )
+                            response = (
+                                f"❌ {search_term} သည် ကျွန်ုပ်တို့ ဆိုင်တွင် မရှိပါ။\n\n"
+                                f"✅ {not_found_brand} မှ ရနိုင်သော မော်ဒယ်များ:\n\n"
+                                f"{model_lines}\n\n"
+                                f"ဝယ်ယူလိုသော မော်ဒယ် ရွေးချယ်ပေးပါ။"
+                            )
+                        else:
+                            response = f"❌ {search_term} သည် ကျွန်ုပ်တို့ ဆိုင်တွင် မရှိပါ။"
+                    else:
+                        response = f"❌ {search_term} သည် ကျွန်ုပ်တို့ ဆိုင်တွင် မရှိပါ။"
+
+                    yield f"data: {json.dumps({'text': response})}\n\n"
+                    if session_id:
+                        try:
+                            conn = get_users_db_conn()
+                            conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
+                                         (session_id, "user", message))
+                            conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
+                                         (session_id, "assistant", response))
+                            conn.commit()
+                            conn.close()
+                        except Exception as e:
+                            logger.error(f"❌ DB error: {e}")
+                    logger.info(f"✅ Product not found response sent: {search_term}")
+                    return
 
             # ═══════════════════════════════════════════════════
             # STEP 5: Handle Cart Commands
             # ═══════════════════════════════════════════════════
             elif understanding.intent == Intent.CART_COMMAND:
                 if not user_id:
-                    # Guest trying to use cart - show login message
                     response = """⚠️ Guest အနေနဲ့ Cart အသုံးပြု၍ မရပါ။
-
-Order တင်ချင်ရင် အရင် Login လုပ်ပေးပါ။
-
-📌 Login လုပ်ရန် သို့မဟုတ် Register လုပ်ရန် ညာဘက်ထောင့်က Menu ကို နှိပ်ပါ။"""
-
+                
+                Order တင်ချင်ရင် အရင် Login လုပ်ပေးပါ။
+                
+                📌 Login လုပ်ရန် သို့မဟုတ် Register လုပ်ရန် ညာဘက်ထောင့်က Menu ကို နှိပ်ပါ။"""
                     yield f"data: {json.dumps({'text': response})}\n\n"
-
                     if session_id:
                         try:
                             conn = get_users_db_conn()
                             conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
-                                       (session_id, "user", message))
+                                         (session_id, "user", message))
                             conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
-                                       (session_id, "assistant", response))
+                                         (session_id, "assistant", response))
                             conn.commit()
                             conn.close()
                         except Exception as e:
                             logger.error(f"❌ DB error: {e}")
-
                     logger.info("✅ Guest cart attempt blocked")
                     return
 
-                # User is authenticated - handle cart command
                 response, new_state = order_manager.handle_cart_management(user_id, message)
+
+                # FIX: Persist CART_MANAGEMENT state so the next numbered reply
+                # ("1","2","3","4") is caught by STEP 2 instead of falling through
+                # to the LLM. Only write if not already set (avoid overwriting cart).
+                if new_state == OrderState.CART_MANAGEMENT:
+                    session = order_db.load_session(user_id)
+                    if session.state != OrderState.CART_MANAGEMENT:
+                        session.state = OrderState.CART_MANAGEMENT
+                        order_db.save_session(user_id, session)
 
                 yield f"data: {json.dumps({'text': response})}\n\n"
 
-                # Save to database
                 if session_id:
                     try:
                         conn = get_users_db_conn()
@@ -692,7 +885,6 @@ Order တင်ချင်ရင် အရင် Login လုပ်ပေးပ
                     yield f"data: {json.dumps({'text': correction, 'corrected': True})}\n\n"
                 full = validated_response
 
-            # Save to database
             if current_user and session_id:
                 try:
                     conn = get_users_db_conn()

@@ -1197,6 +1197,10 @@ class TTLCache:
 
 _cache = TTLCache(max_size=Config.CACHE_SIZE, ttl=Config.CACHE_TTL_SECONDS)
 
+# FIX A+C: Numeric menu responses are state-dependent — never cache them.
+# "1","2","3","4" mean different things in different order states.
+_MENU_INPUT = re.compile(r'^\s*[1-4]\s*$')
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # METRICS
@@ -1261,13 +1265,16 @@ def get_final_prompt(message: str, history: list, llm, user_info: str = "") -> s
 
         # ========================================
         # STEP 1: Check Cache
+        # FIX A: Skip cache for numeric menu inputs — they are
+        # state-dependent and must never be served stale.
         # ========================================
-        cached = _cache.get(message, len(history))
-        if cached:
-            used_cache = True
-            logger.info(f"💾 CACHE HIT")
-            _metrics.log(Intent.UNKNOWN, True, False, False)
-            return cached
+        if not _MENU_INPUT.match(message):
+            cached = _cache.get(message, len(history))
+            if cached:
+                used_cache = True
+                logger.info(f"💾 CACHE HIT")
+                _metrics.log(Intent.UNKNOWN, True, False, False)
+                return cached
 
         # ========================================
         # STEP 2: Fast Intent Classification
@@ -1383,8 +1390,14 @@ def get_final_prompt(message: str, history: list, llm, user_info: str = "") -> s
 
         # ========================================
         # STEP 8: Cache & Log
+        # FIX C: Don't cache numeric menu responses — they are
+        # state-dependent and would poison future sessions.
         # ========================================
-        _cache.set(final_prompt, message, len(history))
+        _is_ordering_intent = understanding.intent in (
+            Intent.BUY_PRODUCT, Intent.CART_COMMAND, Intent.ORDER_INPUT
+        )
+        if not _MENU_INPUT.match(message) and not _is_ordering_intent:
+            _cache.set((final_prompt, understanding), message, len(history))
         _metrics.log(understanding.intent, used_cache, used_llm, fetched_context)
 
         elapsed = (time.time() - start_time) * 1000
@@ -1425,14 +1438,17 @@ def get_final_prompt_with_understanding(message: str, history: list, llm, user_i
 
         # ========================================
         # STEP 1: Check Cache
+        # FIX A: Skip cache for numeric menu inputs — they are
+        # state-dependent and must never be served stale.
         # ========================================
-        cached = _cache.get(message, len(history))
-        if cached:
-            used_cache = True
-            logger.info(f"💾 CACHE HIT")
-            _metrics.log(Intent.UNKNOWN, True, False, False)
-            # Assuming the cache returns the (prompt, understanding) tuple
-            return cached
+        if not _MENU_INPUT.match(message):
+            cached = _cache.get(message, len(history))
+            if cached:
+                used_cache = True
+                logger.info(f"💾 CACHE HIT")
+                _metrics.log(Intent.UNKNOWN, True, False, False)
+                # Assuming the cache returns the (prompt, understanding) tuple
+                return cached
 
         # ========================================
         # STEP 2: Fast Intent Classification
@@ -1527,8 +1543,11 @@ def get_final_prompt_with_understanding(message: str, history: list, llm, user_i
 
         # ========================================
         # STEP 8: Cache & Log
+        # FIX C: Don't cache numeric menu responses — they are
+        # state-dependent and would poison future sessions.
         # ========================================
-        _cache.set((final_prompt, understanding), message, len(history))
+        if not _MENU_INPUT.match(message):
+            _cache.set((final_prompt, understanding), message, len(history))
         _metrics.log(understanding.intent, used_cache, used_llm, fetched_context)
 
         elapsed = (time.time() - start_time) * 1000
@@ -1551,6 +1570,11 @@ def get_final_prompt_with_understanding(message: str, history: list, llm, user_i
 def get_router_metrics() -> Dict:
     """Get metrics"""
     return _metrics.report()
+
+
+def get_memory() -> ConversationMemory:
+    """Expose conversation memory so the endpoint can read last known product context."""
+    return _memory
 
 
 def reset_conversation():
