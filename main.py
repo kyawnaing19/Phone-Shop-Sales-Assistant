@@ -911,16 +911,40 @@ async def chat_stream(request: Request, current_user: dict = Depends(get_optiona
 async def chatbot(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
+
 @app.get("/inventory", response_class=HTMLResponse)
-async def inventory(request: Request, search: str = ""):
+async def inventory(request: Request, search: str = "", min_price: int = 0, max_price: int = 0):
     conn = get_db_conn()
+
+    conditions = []
+    params = []
+
     if search:
-        items = conn.execute("SELECT * FROM products WHERE brand LIKE ? OR model LIKE ? OR specifications LIKE ? ORDER BY brand, model",
-                            (f"%{search}%", f"%{search}%", f"%{search}%")).fetchall()
-    else:
-        items = conn.execute("SELECT * FROM products ORDER BY brand, model").fetchall()
+        conditions.append("(brand LIKE ? OR model LIKE ? OR specifications LIKE ?)")
+        params.extend([f"%{search}%", f"%{search}%", f"%{search}%"])
+
+    if min_price > 0:
+        conditions.append("price >= ?")
+        params.append(min_price)
+
+    if max_price > 0:
+        conditions.append("price <= ?")
+        params.append(max_price)
+
+    query = "SELECT * FROM products"
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    query += " ORDER BY brand, model"
+
+    items = conn.execute(query, params).fetchall()
     conn.close()
-    return templates.TemplateResponse("inventory.html", {"request": request, "items": items})
+    return templates.TemplateResponse("inventory.html", {
+        "request": request,
+        "items": items,
+        "search": search,
+        "min_price": min_price,
+        "max_price": max_price
+    })
 
 @app.get("/manage", response_class=HTMLResponse)
 async def manage(request: Request):
