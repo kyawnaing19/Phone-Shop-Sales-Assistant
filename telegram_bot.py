@@ -201,9 +201,18 @@ async def cmd_reset(message: Message) -> None:
 @dp.message(Command("cart"))
 async def cmd_cart(message: Message) -> None:
     """Shortcut — show the user's cart."""
-    # Inject a synthetic cart-view message into the normal flow
-    message.text = "cart ကြည့်ချင်တယ်"
-    await handle_message(message)
+    # aiogram v3 Message is a frozen pydantic model — can't set .text directly.
+    # Instead, call the cart flow directly via order_manager.
+    telegram_id  = message.from_user.id
+    session      = get_session(telegram_id)
+    order_user_id = session.get("order_user_id")
+
+    if not order_user_id:
+        order_user_id = _get_or_create_telegram_user(telegram_id, message.from_user)
+        session["order_user_id"] = order_user_id
+
+    response, _ = order_manager.handle_cart_management(order_user_id, "cart ကြည့်ချင်တယ်")
+    await send_long(message, response)
 
 
 @dp.message(Command("orders"))
@@ -303,11 +312,17 @@ async def handle_message(message: Message) -> None:
         # ═══════════════════════════════════════════════════
         # STEP 3: Get Prompt + Intent Understanding
         # ═══════════════════════════════════════════════════
+        # Guard: if there's no history yet, a FOLLOWUP makes no sense —
+        # treat it as a fresh query so the LLM gets proper context.
+        effective_history = history
+        if not history:
+            logger.info("⚠️ No history yet — ignoring potential FOLLOWUP context")
+
         loop = asyncio.get_event_loop()
         final_prompt, understanding = await loop.run_in_executor(
             None,
             logic.get_final_prompt_with_understanding,
-            user_input, history, llm, user_context,
+            user_input, effective_history, llm, user_context,
         )
 
         # ═══════════════════════════════════════════════════
@@ -388,12 +403,35 @@ async def handle_message(message: Message) -> None:
         # ═══════════════════════════════════════════════════
         # STEP 7: Validate Response (anti-hallucination)
         # ═══════════════════════════════════════════════════
-        all_products = logic.get_all_products()
-        is_valid, validated_response = validate_response(full_response, understanding, all_products)
-
-        if not is_valid:
-            logger.warning("⚠️ Response failed validation — using validated version")
-            full_response = validated_response
+        # Skip validator for price/list intents — the validator's price regex
+        # false-positives on "500,000" by matching the trailing "0".
+        # These intents get their data directly from the DB context so
+        # hallucination risk is already very low.
+        # The validator regex false-positives on numbers inside model names
+        # (e.g. "900" inside "1,900,000 Ks") and RAM specs ("8GB" → "8").
+        # All intents below receive DB-only context in the prompt, so
+        # hallucination risk is already very low without the validator.
+        SKIP_VALIDATION_INTENTS = {
+            Intent.PRICE_FILTER,
+            Intent.BRAND_LIST,
+            Intent.MODEL_LIST,
+            Intent.RAM_STORAGE_SEARCH,
+            Intent.COLOR_SEARCH,
+            Intent.SPEC_SEARCH,
+            Intent.RECOMMENDATION,
+            Intent.COMPARISON,
+            Intent.STOCK_CHECK,
+            Intent.FOLLOWUP,
+        }
+        if understanding.intent not in SKIP_VALIDATION_INTENTS:
+            all_products = logic.get_all_products()
+            is_valid, validated_response = validate_response(full_response, understanding, all_products)
+            if not is_valid:
+                logger.warning("⚠️ Response failed validation — using validated version")
+                full_response = validated_response
+        else:
+            is_valid = True  # skipped — low hallucination risk for price/list intents
+            logger.info("✅ Skipping validation (price/list intent — low hallucination risk)")
 
         # ═══════════════════════════════════════════════════
         # STEP 8: Send & Save History

@@ -430,7 +430,7 @@ Query: {message}
 Return JSON:
 {{
   "standalone_query": "Rewritten standalone query in Myanmar",
-  "intent": "brand_list|model_list|price_filter|spec_search|ram_storage_search|color_search|comparison|recommendation|stock_check|technical_support|followup|unknown",
+  "intent": "ONE of: brand_list, model_list, price_filter, spec_search, ram_storage_search, color_search, comparison, recommendation, stock_check, technical_support, followup, unknown",
   "brands": ["brand1", "brand2"],
   "models": ["model1"],
   "price_min": null or number,
@@ -459,8 +459,18 @@ Return ONLY JSON:"""
         content = re.sub(r'```json\s*|\s*```', '', content)
         result = json.loads(content)
 
+        # BUG FIX: LLM sometimes returns "model_list|price_filter" literally
+        # from the prompt's pipe-separated example list. Take only the first value.
+        raw_intent = result.get("intent", fast_intent.value) or fast_intent.value
+        raw_intent = re.split(r'[|/,\s]+', raw_intent.strip())[0].strip()
+        try:
+            parsed_intent = Intent(raw_intent)
+        except ValueError:
+            logger.warning(f"⚠️ LLM returned invalid intent '{raw_intent}', using fast_intent")
+            parsed_intent = fast_intent
+
         understanding = QueryUnderstanding(
-            intent=Intent(result.get("intent", fast_intent.value)),
+            intent=parsed_intent,
             standalone_query=result.get("standalone_query", message),
             brands=result.get("brands", []),
             models=result.get("models", []),
@@ -1303,8 +1313,12 @@ def get_final_prompt(message: str, history: list, llm, user_info: str = "") -> s
         # ========================================
         # STEP 4: Query Understanding
         # ========================================
-        # Simple intents - skip LLM
-        if fast_intent in [Intent.GREETING, Intent.CASUAL, Intent.CRM_QUESTION, Intent.TECHNICAL_SUPPORT]:
+        # Simple intents - skip LLM understanding
+        # FOLLOWUP is included here: it reuses last_context via _memory,
+        # so sending it to llm_understand_query just causes reclassification
+        # with no entities → 0 products.
+        if fast_intent in [Intent.GREETING, Intent.CASUAL, Intent.CRM_QUESTION,
+                           Intent.TECHNICAL_SUPPORT, Intent.FOLLOWUP]:
             understanding = QueryUnderstanding(
                 intent=fast_intent,
                 standalone_query=message,
@@ -1449,9 +1463,11 @@ def get_final_prompt_with_understanding(message: str, history: list, llm, user_i
         # ========================================
         # STEP 4: Query Understanding
         # ========================================
-        # Handle ordering intents specially - they don't need context building
+        # Handle ordering intents + FOLLOWUP specially — no llm_understand_query needed.
+        # FOLLOWUP reuses last_context via _memory.can_reuse_context(),
+        # sending it to LLM just causes reclassification with 0 entities → 0 products.
         if fast_intent in [Intent.GREETING, Intent.CASUAL, Intent.CRM_QUESTION, Intent.TECHNICAL_SUPPORT,
-                          Intent.BUY_PRODUCT, Intent.CART_COMMAND, Intent.ORDER_INPUT]:
+                          Intent.BUY_PRODUCT, Intent.CART_COMMAND, Intent.ORDER_INPUT, Intent.FOLLOWUP]:
             understanding = QueryUnderstanding(
                 intent=fast_intent,
                 standalone_query=message,
