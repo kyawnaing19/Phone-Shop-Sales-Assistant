@@ -43,11 +43,13 @@ from langchain_nvidia_ai_endpoints import ChatNVIDIA
 # Import the NEW enhanced classifier
 from advanced_intent_classifier import (
     HybridIntentClassifier,
+    IntentResult,
     Intent,
-    llm_classify_intent,
+    llm_classify_multi_intent,
     is_database_intent,
     is_policy_intent,
-    is_technical_support_intent
+    is_technical_support_intent,
+    is_ordering_intent,
 )
 
 from shop_policies import get_policy, detect_policy_category, SHOP_INFO, POLICIES_AVAILABLE
@@ -1261,18 +1263,22 @@ def get_final_prompt(message: str, history: list, llm, user_info: str = "") -> s
         # STEP 2: Fast Intent Classification
         # ========================================
         def use_llm_for_classification(msg):
-            return llm_classify_intent(msg, llm)
+            return llm_classify_multi_intent(msg, llm)
 
-        fast_intent, confidence = hybrid_classifier.classify(
+        intent_result = hybrid_classifier.classify(
             message,
             has_history=len(history) > 0,
             use_llm=use_llm_for_classification
         )
+        fast_intent = intent_result.primary
+        confidence  = intent_result.primary_confidence
 
-        logger.info(f"🎯 Intent: {fast_intent.value} (confidence: {confidence:.2f})")
-        logger.info(f"   - Database intent: {is_database_intent(fast_intent)}")
-        logger.info(f"   - Policy intent: {is_policy_intent(fast_intent)}")
-        logger.info(f"   - Tech support intent: {is_technical_support_intent(fast_intent)}")
+        logger.info(f"🎯 Intent: {fast_intent.value} (confidence: {confidence:.2f}) [{intent_result.source}]")
+        if intent_result.secondary_intents:
+            logger.info(f"   - Secondary intents: {[i.value for i in intent_result.secondary_intents]}")
+        logger.info(f"   - Database intent: {intent_result.requires_db}")
+        logger.info(f"   - Policy intent: {intent_result.requires_policy}")
+        logger.info(f"   - Tech support intent: {intent_result.requires_tech_support}")
 
         # If confidence is too low, ask for clarification
         if confidence < 0.4:
@@ -1418,15 +1424,19 @@ def get_final_prompt_with_understanding(message: str, history: list, llm, user_i
         # STEP 2: Fast Intent Classification
         # ========================================
         def use_llm_for_classification(msg):
-            return llm_classify_intent(msg, llm)
+            return llm_classify_multi_intent(msg, llm)
 
-        fast_intent, confidence = hybrid_classifier.classify(
+        intent_result = hybrid_classifier.classify(
             message,
             has_history=len(history) > 0,
             use_llm=use_llm_for_classification
         )
+        fast_intent = intent_result.primary
+        confidence  = intent_result.primary_confidence
 
-        logger.info(f"🎯 Intent: {fast_intent.value} (confidence: {confidence:.2f})")
+        logger.info(f"🎯 Intent: {fast_intent.value} (confidence: {confidence:.2f}) [{intent_result.source}]")
+        if intent_result.secondary_intents:
+            logger.info(f"   - Secondary intents: {[i.value for i in intent_result.secondary_intents]}")
 
         # ========================================
         # STEP 3: Entity Extraction (Enhanced)
