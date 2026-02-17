@@ -912,24 +912,44 @@ async def chatbot(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
-@app.get("/inventory", response_class=HTMLResponse)
-async def inventory(request: Request, search: str = "", min_price: int = 0, max_price: int = 0):
-    conn = get_db_conn()
+from typing import Optional
+from fastapi import Query
 
+@app.get("/inventory", response_class=HTMLResponse)
+async def inventory(
+    request: Request,
+    search: str = "",
+    min_price: Optional[str] = Query(None), # Accept as string initially to avoid 422 errors
+    max_price: Optional[str] = Query(None)
+):
+    conn = get_db_conn()
     conditions = []
     params = []
 
+    # 1. Helper to safely convert and validate integers
+    def safe_int(val):
+        if val is None or str(val).strip() == "":
+            return None
+        try:
+            return int(val)
+        except ValueError:
+            return None
+
+    clean_min = safe_int(min_price)
+    clean_max = safe_int(max_price)
+
+    # 2. Build Query
     if search:
         conditions.append("(brand LIKE ? OR model LIKE ? OR specifications LIKE ?)")
         params.extend([f"%{search}%", f"%{search}%", f"%{search}%"])
 
-    if min_price > 0:
+    if clean_min is not None:
         conditions.append("price >= ?")
-        params.append(min_price)
+        params.append(clean_min)
 
-    if max_price > 0:
+    if clean_max is not None:
         conditions.append("price <= ?")
-        params.append(max_price)
+        params.append(clean_max)
 
     query = "SELECT * FROM products"
     if conditions:
@@ -938,12 +958,13 @@ async def inventory(request: Request, search: str = "", min_price: int = 0, max_
 
     items = conn.execute(query, params).fetchall()
     conn.close()
+
     return templates.TemplateResponse("inventory.html", {
         "request": request,
         "items": items,
         "search": search,
-        "min_price": min_price,
-        "max_price": max_price
+        "min_price": min_price or "", # Keep as string for the UI
+        "max_price": max_price or ""
     })
 
 @app.get("/manage", response_class=HTMLResponse)
