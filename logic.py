@@ -364,8 +364,17 @@ class EntityExtractor:
 entity_extractor = EntityExtractor()
 
 
+def normalize_myanmar_digits(text: str) -> str:
+    """Convert Myanmar digits (၀-၉) to ASCII digits (0-9)"""
+    myanmar_digits = '၀၁၂၃၄၅၆၇၈၉'
+    for i, d in enumerate(myanmar_digits):
+        text = text.replace(d, str(i))
+    return text
+
+
 def parse_price_range(text: str) -> Tuple[Optional[int], Optional[int]]:
     """Parse price range from text"""
+    text = normalize_myanmar_digits(text)   # ၁၀၀ → 100
     text_lower = text.lower()
 
     # Pattern: "under X lakh" or "X သိန်းအောက်"
@@ -388,6 +397,12 @@ def parse_price_range(text: str) -> Tuple[Optional[int], Optional[int]]:
         # Assume "around X lakh" means X-20% to X+20%
         center = amount * 100000
         return int(center * 0.8), int(center * 1.2)
+
+    # Pattern: raw kyat amount — "100 ကျပ်", "၁၀၀ကျပ်တန်", "5000 kyat"
+    kyat_match = re.search(r'(\d+)[\s]*(ကျပ်တန်|ကျပ်|kyat)', text_lower)
+    if kyat_match:
+        amount = int(kyat_match.group(1))
+        return None, amount   # treat as exact max price in kyat
 
     return None, None
 
@@ -526,6 +541,7 @@ def format_price(price: int) -> str:
             result += f" {thou_1} ထောင်"
         return result
 
+    # Under 100,000 kyat — show as plain kyat amount
     return f"{price:,} ကျပ်"
 
 
@@ -946,7 +962,7 @@ User မေးခွန်း: {understanding.standalone_query}
             inventory_section += "-" * 60 + "\n"
 
             for p in sorted(products, key=lambda x: x['price']):
-                line = f"  • {p['model']} - {p['price']:,} MMK"
+                line = f"  • {p['model']} - {format_price(p['price'])}"
 
                 if p.get('ram_storage'):
                     line += f" | RAM/Storage: {p['ram_storage']}"
@@ -994,7 +1010,7 @@ If ANY answer is NO → Rewrite response using ONLY inventory above
 【RULE 4: RESPONSE FORMAT】
 ✅ Use Myanmar language naturally
 ✅ Use English for technical terms (camera, battery, charging, etc.)
-✅ Show exact prices from inventory (e.g., 459,000 MMK, not "around 5 lakhs")
+✅ Show exact prices from inventory using Myanmar format (e.g., ၃ သိန်း ၅ ထောင်, ၁ သိန်း ၅ သောင်း, ၁၀၀ ကျပ်)
 ✅ Be helpful and friendly
 ❌ Don't write unnecessary notes or disclaimers
 """

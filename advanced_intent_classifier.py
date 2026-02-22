@@ -861,9 +861,34 @@ Order intents by confidence descending. Include only intents with confidence >= 
     import json
 
     try:
-        response = llm.invoke(prompt)
-        content  = response.content.strip()
+        # Support both LangChain LLM objects (.invoke) and plain callables
+        if hasattr(llm, 'invoke'):
+            response = llm.invoke(prompt)
+            content  = response.content.strip()
+        else:
+            raw = llm(prompt)
+
+            # ── Fast path: callable already returned parsed intent tuples ──
+            if isinstance(raw, list) and raw and isinstance(raw[0], tuple):
+                results: List[Tuple[Intent, float]] = []
+                for item in raw:
+                    intent, confidence = item[0], float(item[1])
+                    if not isinstance(intent, Intent):
+                        try:
+                            intent = Intent(intent)
+                        except ValueError:
+                            intent = Intent.UNKNOWN
+                    results.append((intent, confidence))
+                return sorted(results, key=lambda x: -x[1])
+
+            # ── Slow path: callable returned a string, parse as JSON ──
+            content = raw.content if hasattr(raw, 'content') else str(raw)
+            content = content.strip()
+
         content  = re.sub(r'```json\s*|\s*```', '', content).strip()
+        logger.debug(f"LLM raw response: {repr(content)}")
+        if not content:
+            raise ValueError("LLM returned empty response")
         data     = json.loads(content)
 
         results: List[Tuple[Intent, float]] = []
@@ -879,7 +904,7 @@ Order intents by confidence descending. Include only intents with confidence >= 
         return sorted(results, key=lambda x: -x[1])
 
     except Exception as exc:
-        logger.error(f"LLM multi-intent classification error: {exc}")
+        logger.error(f"LLM multi-intent classification error: {exc} | raw={repr(content) if 'content' in dir() else 'N/A'}")
         return [(Intent.UNKNOWN, 0.0)]
 
 

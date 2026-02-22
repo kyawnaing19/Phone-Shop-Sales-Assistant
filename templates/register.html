@@ -375,7 +375,7 @@
                         type="text"
                         id="username"
                         class="form-input"
-                        placeholder="Choose a username"
+                        placeholder="Letters, numbers, underscores (starts with letter)"
                         autocomplete="username"
                     >
                     <div class="error-message" id="usernameError">
@@ -397,7 +397,7 @@
                         type="password"
                         id="password"
                         class="form-input"
-                        placeholder="Create a password"
+                        placeholder="Min 8 chars, upper, lower, number, symbol"
                         autocomplete="new-password"
                     >
                     <button type="button" class="password-toggle" id="togglePassword">
@@ -552,6 +552,13 @@
             // Mark as touched
             fieldState.username.touched = true;
 
+            if (username === '') {
+                showError(usernameInput, errorElement, 'Username is required');
+                hideElement(successElement);
+                fieldState.username.valid = false;
+                return false;
+            }
+
             if (username.length < 3) {
                 showError(usernameInput, errorElement, 'Username must be at least 3 characters');
                 hideElement(successElement);
@@ -566,8 +573,22 @@
                 return false;
             }
 
+            if (!/^[a-zA-Z]/.test(username)) {
+                showError(usernameInput, errorElement, 'Username must start with a letter');
+                hideElement(successElement);
+                fieldState.username.valid = false;
+                return false;
+            }
+
             if (!/^[a-zA-Z0-9_]+$/.test(username)) {
                 showError(usernameInput, errorElement, 'Only letters, numbers, and underscores allowed');
+                hideElement(successElement);
+                fieldState.username.valid = false;
+                return false;
+            }
+
+            if (/__/.test(username) || username.endsWith('_')) {
+                showError(usernameInput, errorElement, 'Username cannot have consecutive or trailing underscores');
                 hideElement(successElement);
                 fieldState.username.valid = false;
                 return false;
@@ -593,8 +614,43 @@
             // Mark as touched
             fieldState.password.touched = true;
 
-            if (password.length < 6) {
-                showError(passwordInput, errorElement, 'Password must be at least 6 characters');
+            if (password === '') {
+                showError(passwordInput, errorElement, 'Password is required');
+                hideElement(successElement);
+                fieldState.password.valid = false;
+                return false;
+            }
+
+            if (password.length < 8) {
+                showError(passwordInput, errorElement, 'Password must be at least 8 characters');
+                hideElement(successElement);
+                fieldState.password.valid = false;
+                return false;
+            }
+
+            if (!/[A-Z]/.test(password)) {
+                showError(passwordInput, errorElement, 'Password must contain at least one uppercase letter');
+                hideElement(successElement);
+                fieldState.password.valid = false;
+                return false;
+            }
+
+            if (!/[a-z]/.test(password)) {
+                showError(passwordInput, errorElement, 'Password must contain at least one lowercase letter');
+                hideElement(successElement);
+                fieldState.password.valid = false;
+                return false;
+            }
+
+            if (!/[0-9]/.test(password)) {
+                showError(passwordInput, errorElement, 'Password must contain at least one number');
+                hideElement(successElement);
+                fieldState.password.valid = false;
+                return false;
+            }
+
+            if (!/[^a-zA-Z0-9]/.test(password)) {
+                showError(passwordInput, errorElement, 'Password must contain at least one special character');
                 hideElement(successElement);
                 fieldState.password.valid = false;
                 return false;
@@ -621,15 +677,15 @@
             // Mark as touched
             fieldState.confirmPassword.touched = true;
 
-            if (confirmPassword !== password) {
-                showError(confirmPasswordInput, errorElement, 'Passwords do not match');
+            if (confirmPassword === '') {
+                showError(confirmPasswordInput, errorElement, 'Please confirm your password');
                 hideElement(successElement);
                 fieldState.confirmPassword.valid = false;
                 return false;
             }
 
-            if (confirmPassword.length < 6) {
-                showError(confirmPasswordInput, errorElement, 'Password must be at least 6 characters');
+            if (confirmPassword !== password) {
+                showError(confirmPasswordInput, errorElement, 'Passwords do not match');
                 hideElement(successElement);
                 fieldState.confirmPassword.valid = false;
                 return false;
@@ -655,7 +711,14 @@
             // Mark as touched
             fieldState.age.touched = true;
 
-            if (isNaN(age) || age < 13) {
+            if (ageInput.value === '' || isNaN(age)) {
+                showError(ageInput, errorElement, 'Age is required');
+                hideElement(successElement);
+                fieldState.age.valid = false;
+                return false;
+            }
+
+            if (age < 13) {
                 showError(ageInput, errorElement, 'You must be at least 13 years old');
                 hideElement(successElement);
                 fieldState.age.valid = false;
