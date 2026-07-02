@@ -220,6 +220,42 @@ def filter_products(
     return products
 
 
+def check_products_exist_in_db(brands: List[str], models: List[str]) -> Dict:
+    """
+    Check if requested products actually exist in DB.
+    Returns dict with found/not_found lists.
+    """
+    all_products = get_all_products()
+
+    found = []
+    not_found = []
+
+    for model in models:
+        # Use word-boundary exact match, not substring
+        match = any(
+            re.search(
+                r'\b' + re.escape(model.lower()) + r'\b',
+                p['model'].lower()
+            )
+            for p in all_products
+        )
+        if match:
+            found.append(model)
+        else:
+            not_found.append(model)
+
+    for brand in brands:
+        match = any(
+            brand.lower() == p['brand'].lower()
+            for p in all_products
+        )
+        if match and brand not in found:
+            found.append(brand)
+        elif not match and brand not in not_found:
+            not_found.append(brand)
+
+    return {"found": found, "not_found": not_found}
+
 # ═══════════════════════════════════════════════════════════════════════════
 # ENTITY EXTRACTION - ENHANCED WITH RAM/STORAGE AND COLOR
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1546,6 +1582,46 @@ def get_final_prompt_with_understanding(message: str, history: list, llm, user_i
             fetched_context = True
             context = build_context_complete(understanding)
             context = compress_context(context, Config.MAX_CONTEXT_TOKENS)
+
+        # ========================================
+        # STEP 5.5: DB Existence Check (COMPARISON, SPEC, STOCK, COLOR)
+        # ========================================
+        if fast_intent in [Intent.COMPARISON, Intent.SPEC_SEARCH,
+                           Intent.STOCK_CHECK, Intent.COLOR_SEARCH]:
+            if understanding.models:  # only if user named a specific model
+                existence = check_products_exist_in_db(
+                    understanding.brands,
+                    understanding.models
+                )
+                if existence["not_found"]:
+                    not_found_str = ", ".join(existence["not_found"])
+                    found_str = ", ".join(existence["found"]) if existence["found"] else None
+
+                    if found_str:
+                        fallback = (
+                            f"မောင်/မ စီးနင်း၊ တောင်းပန်ပါတယ် —\n\n"
+                            f"**{not_found_str}** သည် ကျွန်တော်တို့ ဆိုင်တွင် "
+                            f"မရှိသေးပါ။\n\n"
+                            f"**{found_str}** ကတော့ ရှိပါတယ်။ "
+                            f"ထို ဖုန်းအကြောင်း အသေးစိတ် သိလိုပါသလား?\n\n"
+                            f"📞 ဖုန်း: 09-671698821\n"
+                            f"📞 အခြား: 09-4355737883\n"
+                            f"📍 လိပ်စာ: Gwat, Thaton"
+                        )
+                    else:
+                        fallback = (
+                            f"မောင်/မ စီးနင်း၊ တောင်းပန်ပါတယ် —\n\n"
+                            f"**{not_found_str}** သည် ကျွန်တော်တို့ ဆိုင်တွင် "
+                            f"လက်ရှိ မရှိပါ။\n\n"
+                            f"ဆိုင်တွင် ရှိတဲ့ ဖုန်းများကို ကြည့်ချင်ပါက "
+                            f"'ဖုန်းတွေ ပြပါ' ဟု မေးနိုင်ပါတယ်။\n\n"
+                            f"📞 ဖုန်း: 09-671698821\n"
+                            f"📞 အခြား: 09-4355737883\n"
+                            f"📍 လိပ်စာ: Gwat, Thaton"
+                        )
+
+                    logger.info(f"⛔ Product not in DB: {not_found_str} — returning early, skipping LLM")
+                    return fallback, understanding  # skip STEP 6, 7, 8 entirely
 
         # ========================================
         # STEP 6: Update Memory

@@ -406,14 +406,16 @@ class RuleBasedClassifier:
                 PatternRule(r'ဘယ်အရောင်\s*(ရှိ|ရ)',                                                                                   confidence=0.90),
             ],
 
-            # ── COMPARISON ────────────────────────────────────────────────
             Intent.COMPARISON: [
                 PatternRule(r'(compare|comparison)\s*(between)?\s*\w+\s*(and|vs|versus)\s*\w+', confidence=0.93),
-                PatternRule(r'\b(vs|versus)\b',                                                  confidence=0.90),
-                PatternRule(r'(difference|differ)\s*(between)',                                   confidence=0.90),
-                PatternRule(r'(iphone|samsung|xiaomi|oppo|vivo)\s*(vs|နဲ့|and)\s*(iphone|samsung|xiaomi|oppo|vivo)', confidence=0.95),
-                PatternRule(r'\bယှဉ်ကြည့်\b',                                                   confidence=0.93),
-                PatternRule(r'(ဘယ်ဟာ|ဘယ်တာ)\s*(ပိုကောင်း|better)',                              confidence=0.88),
+                PatternRule(r'\b(vs|versus)\b', confidence=0.90),
+                PatternRule(r'(difference|differ)\s*(between)', confidence=0.90),
+                PatternRule(r'(iphone|samsung|xiaomi|oppo|vivo)\s*(vs|နဲ့|and)\s*(iphone|samsung|xiaomi|oppo|vivo)',
+                            confidence=0.95),
+                PatternRule(r'\bယှဉ်ကြည့်\b', confidence=0.93),
+                PatternRule(r'(ဘယ်ဟာ|ဘယ်တာ)\s*(ပိုကောင်း|better)', confidence=0.93),  # ← raise from 0.88 to 0.93
+                PatternRule(r'which\s*(is|one\s*is)?\s*better', confidence=0.93),  # ← NEW: English pattern
+                PatternRule(r'\bbetter\s*than\b', confidence=0.90),  # ← NEW
             ],
 
             # ── RECOMMENDATION ────────────────────────────────────────────
@@ -527,8 +529,8 @@ class RuleBasedClassifier:
         return sorted_results
 
     def _resolve_conflicts(
-        self,
-        results: Dict[Intent, float]
+            self,
+            results: Dict[Intent, float]
     ) -> Dict[Intent, float]:
         """
         FIX #3: For each exclusive group, keep only the highest-confidence intent.
@@ -543,6 +545,15 @@ class RuleBasedClassifier:
                         logger.debug(f"Conflict resolved: removed {intent.value} "
                                      f"in favour of {winner[0].value}")
                         del results[intent]
+
+        # ── FIX #8: COMPARISON always beats MODEL_LIST ──────────────────
+        # "Which is better: Samsung A15 or Redmi 13?" triggers both
+        # MODEL_LIST (brand names detected) and COMPARISON (better/vs).
+        # COMPARISON must win because it changes the entire response path.
+        if Intent.COMPARISON in results and Intent.MODEL_LIST in results:
+            del results[Intent.MODEL_LIST]
+            logger.debug("Conflict resolved: COMPARISON beats MODEL_LIST")
+
         return results
 
 
